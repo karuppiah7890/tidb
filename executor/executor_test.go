@@ -272,6 +272,7 @@ func TestSuiteP1(t *testing.T) {
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestPessimisticSelectForUpdate", SubTestPessimisticSelectForUpdate(s))
 		t.Run("TestBind", SubTestBind(s))
+		t.Run("TestChangePumpAndDrainer", SubTestChangePumpAndDrainer(s))
 	})
 }
 
@@ -319,14 +320,17 @@ func SubTestBind(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestChangePumpAndDrainer(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	// change pump or drainer's state need connect to etcd
-	// so will meet error "URL scheme must be http, https, unix, or unixs: /tmp/tidb"
-	err := tk.ExecToErr("change pump to node_state ='paused' for node_id 'pump1'")
-	c.Assert(err, ErrorMatches, "URL scheme must be http, https, unix, or unixs.*")
-	err = tk.ExecToErr("change drainer to node_state ='paused' for node_id 'drainer1'")
-	c.Assert(err, ErrorMatches, "URL scheme must be http, https, unix, or unixs.*")
+func SubTestChangePumpAndDrainer(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		// change pump or drainer's state need connect to etcd
+		// so will meet error "URL scheme must be http, https, unix, or unixs: /tmp/tidb"
+		err := tk.ExecToErr("change pump to node_state ='paused' for node_id 'pump1'")
+		require.Regexp(t, "URL scheme must be http, https, unix, or unixs.*", err.Error())
+		err = tk.ExecToErr("change drainer to node_state ='paused' for node_id 'drainer1'")
+		require.Regexp(t, "URL scheme must be http, https, unix, or unixs.*", err.Error())
+	}
 }
 
 func (s *testSuiteP1) TestLoadStats(c *C) {
