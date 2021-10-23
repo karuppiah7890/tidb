@@ -294,6 +294,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestTableReverseOrder", SubTestTableReverseOrder(s))
 		t.Run("TestDefaultNull", SubTestDefaultNull(s))
 		t.Run("TestUnsignedPKColumn", SubTestUnsignedPKColumn(s))
+		t.Run("TestJSON", SubTestJSON(s))
 	})
 }
 
@@ -1930,8 +1931,10 @@ func SubTestUnsignedPKColumn(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestJSON(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
+func SubTestJSON(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
 
 	tk.MustExec("use test")
 	tk.MustExec("drop table if exists test_json")
@@ -1945,64 +1948,64 @@ func (s *testSuiteP1) TestJSON(c *C) {
 	tk.MustExec(`insert into test_json (id, a) values (6, '"string"')`)
 
 	result := tk.MustQuery(`select tj.a from test_json tj order by tj.id`)
-	result.Check(testkit.Rows(`{"a": [1, "2", {"aa": "bb"}, 4], "b": true}`, "null", "<nil>", "true", "3", "4", `"string"`))
+	result.Check(newtestkit.Rows(`{"a": [1, "2", {"aa": "bb"}, 4], "b": true}`, "null", "<nil>", "true", "3", "4", `"string"`))
 
 	// Check json_type function
 	result = tk.MustQuery(`select json_type(a) from test_json tj order by tj.id`)
-	result.Check(testkit.Rows("OBJECT", "NULL", "<nil>", "BOOLEAN", "INTEGER", "DOUBLE", "STRING"))
+	result.Check(newtestkit.Rows("OBJECT", "NULL", "<nil>", "BOOLEAN", "INTEGER", "DOUBLE", "STRING"))
 
 	// Check json compare with primitives.
 	result = tk.MustQuery(`select a from test_json tj where a = 3`)
-	result.Check(testkit.Rows("3"))
+	result.Check(newtestkit.Rows("3"))
 	result = tk.MustQuery(`select a from test_json tj where a = 4.0`)
-	result.Check(testkit.Rows("4"))
+	result.Check(newtestkit.Rows("4"))
 	result = tk.MustQuery(`select a from test_json tj where a = true`)
-	result.Check(testkit.Rows("true"))
+	result.Check(newtestkit.Rows("true"))
 	result = tk.MustQuery(`select a from test_json tj where a = "string"`)
-	result.Check(testkit.Rows(`"string"`))
+	result.Check(newtestkit.Rows(`"string"`))
 
 	// Check cast(true/false as JSON).
 	result = tk.MustQuery(`select cast(true as JSON)`)
-	result.Check(testkit.Rows(`true`))
+	result.Check(newtestkit.Rows(`true`))
 	result = tk.MustQuery(`select cast(false as JSON)`)
-	result.Check(testkit.Rows(`false`))
+	result.Check(newtestkit.Rows(`false`))
 
 	// Check two json grammar sugar.
 	result = tk.MustQuery(`select a->>'$.a[2].aa' as x, a->'$.b' as y from test_json having x is not null order by id`)
-	result.Check(testkit.Rows(`bb true`))
+	result.Check(newtestkit.Rows(`bb true`))
 	result = tk.MustQuery(`select a->'$.a[2].aa' as x, a->>'$.b' as y from test_json having x is not null order by id`)
-	result.Check(testkit.Rows(`"bb" true`))
+	result.Check(newtestkit.Rows(`"bb" true`))
 
 	// Check some DDL limits for TEXT/BLOB/JSON column.
 	var err error
 	var terr *terror.Error
 
 	_, err = tk.Exec(`create table test_bad_json(a json default '{}')`)
-	c.Assert(err, NotNil)
+	require.Error(t, err)
 	terr = errors.Cause(err).(*terror.Error)
-	c.Assert(terr.Code(), Equals, errors.ErrCode(mysql.ErrBlobCantHaveDefault))
+	require.Equal(t, errors.ErrCode(mysql.ErrBlobCantHaveDefault), terr.Code())
 
 	_, err = tk.Exec(`create table test_bad_json(a blob default 'hello')`)
-	c.Assert(err, NotNil)
+	require.Error(t, err)
 	terr = errors.Cause(err).(*terror.Error)
-	c.Assert(terr.Code(), Equals, errors.ErrCode(mysql.ErrBlobCantHaveDefault))
+	require.Equal(t, errors.ErrCode(mysql.ErrBlobCantHaveDefault), terr.Code())
 
 	_, err = tk.Exec(`create table test_bad_json(a text default 'world')`)
-	c.Assert(err, NotNil)
+	require.Error(t, err)
 	terr = errors.Cause(err).(*terror.Error)
-	c.Assert(terr.Code(), Equals, errors.ErrCode(mysql.ErrBlobCantHaveDefault))
+	require.Equal(t, errors.ErrCode(mysql.ErrBlobCantHaveDefault), terr.Code())
 
 	// check json fields cannot be used as key.
 	_, err = tk.Exec(`create table test_bad_json(id int, a json, key (a))`)
-	c.Assert(err, NotNil)
+	require.Error(t, err)
 	terr = errors.Cause(err).(*terror.Error)
-	c.Assert(terr.Code(), Equals, errors.ErrCode(mysql.ErrJSONUsedAsKey))
+	require.Equal(t, errors.ErrCode(mysql.ErrJSONUsedAsKey), terr.Code())
 
 	// check CAST AS JSON.
 	result = tk.MustQuery(`select CAST('3' AS JSON), CAST('{}' AS JSON), CAST(null AS JSON)`)
-	result.Check(testkit.Rows(`3 {} <nil>`))
+	result.Check(newtestkit.Rows(`3 {} <nil>`))
 
-	tk.MustQuery("select a, count(1) from test_json group by a order by a").Check(testkit.Rows(
+	tk.MustQuery("select a, count(1) from test_json group by a order by a").Check(newtestkit.Rows(
 		"<nil> 1",
 		"null 1",
 		"3 1",
@@ -2024,9 +2027,10 @@ func (s *testSuiteP1) TestJSON(c *C) {
 	//	('{"c": "1234567890123456789012345678901234567890123456789012345"}'),
 	//	('{"c": "1234567890123456789012345678901234567890123456789012345.12345"}');`)
 	//
-	// tk.MustQuery("select a from test_json;").Check(testkit.Rows("1267.10", "1267.01", "1267.12",
+	// tk.MustQuery("select a from test_json;").Check(newtestkit.Rows("1267.10", "1267.01", "1267.12",
 	//	"1267.35", "1234567890123456789012345678901234567890123456789012345.00",
 	//	"1234567890123456789012345678901234567890123456789012345.12"))
+	}
 }
 
 func (s *testSuiteP1) TestMultiUpdate(c *C) {
