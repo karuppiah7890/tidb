@@ -139,6 +139,8 @@ var _ = SerialSuites(&testPrepareSuite{})
 var _ = SerialSuites(&testResourceTagSuite{&baseTestSuite{}})
 
 type testSuite struct{ *baseTestSuite }
+
+// TODO(karuppiah8900): Remove / move this later. Moving - move to appropriate place
 type testSuiteP1 struct{ *baseTestSuite }
 type testSuiteP2 struct{ *baseTestSuite }
 type testSplitTable struct{ *baseTestSuite }
@@ -160,6 +162,7 @@ type testCoprCache struct {
 type testPrepareSuite struct{ testData testutil.TestData }
 type testResourceTagSuite struct{ *baseTestSuite }
 
+// TODO(karuppiah8900): Remove / move this later. Moving - move to appropriate place
 type baseTestSuite struct {
 	cluster testutils.Cluster
 	store   kv.Storage
@@ -268,6 +271,7 @@ func TestSuiteP1(t *testing.T) {
 	defer s.NewTearDownSuite(t)
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestPessimisticSelectForUpdate", SubTestPessimisticSelectForUpdate(s))
+		t.Run("TestBind", SubTestBind(s))
 	})
 }
 
@@ -297,19 +301,22 @@ func (s *testSuite) TearDownTest(c *C) {
 	}
 }
 
-func (s *testSuiteP1) TestBind(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists testbind")
+func SubTestBind(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists testbind")
 
-	tk.MustExec("create table testbind(i int, s varchar(20))")
-	tk.MustExec("create index index_t on testbind(i,s)")
-	tk.MustExec("create global binding for select * from testbind using select * from testbind use index for join(index_t)")
-	c.Assert(len(tk.MustQuery("show global bindings").Rows()), Equals, 1)
+		tk.MustExec("create table testbind(i int, s varchar(20))")
+		tk.MustExec("create index index_t on testbind(i,s)")
+		tk.MustExec("create global binding for select * from testbind using select * from testbind use index for join(index_t)")
+		require.Equal(t, 1, len(tk.MustQuery("show global bindings").Rows()))
 
-	tk.MustExec("create session binding for select * from testbind using select * from testbind use index for join(index_t)")
-	c.Assert(len(tk.MustQuery("show session bindings").Rows()), Equals, 1)
-	tk.MustExec("drop session binding for select * from testbind")
+		tk.MustExec("create session binding for select * from testbind using select * from testbind use index for join(index_t)")
+		require.Equal(t, 1, len(tk.MustQuery("show session bindings").Rows()))
+		tk.MustExec("drop session binding for select * from testbind")
+	}
 }
 
 func (s *testSuiteP1) TestChangePumpAndDrainer(c *C) {
