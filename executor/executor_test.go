@@ -273,6 +273,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestPessimisticSelectForUpdate", SubTestPessimisticSelectForUpdate(s))
 		t.Run("TestBind", SubTestBind(s))
 		t.Run("TestChangePumpAndDrainer", SubTestChangePumpAndDrainer(s))
+		t.Run("TestLoadStats", SubTestLoadStats(s))
 	})
 }
 
@@ -333,11 +334,14 @@ func SubTestChangePumpAndDrainer(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestLoadStats(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	c.Assert(tk.ExecToErr("load stats"), NotNil)
-	c.Assert(tk.ExecToErr("load stats ./xxx.json"), NotNil)
+func SubTestLoadStats(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		require.Error(t, tk.ExecToErr("load stats"))
+		require.Error(t, tk.ExecToErr("load stats ./xxx.json"))
+	}
 }
 
 func (s *testSuiteP1) TestPlanReplayer(c *C) {
