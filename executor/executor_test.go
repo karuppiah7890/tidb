@@ -296,6 +296,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestUnsignedPKColumn", SubTestUnsignedPKColumn(s))
 		t.Run("TestJSON", SubTestJSON(s))
 		t.Run("TestMultiUpdate", SubTestMultiUpdate(s))
+		t.Run("TestGeneratedColumnWrite", SubTestGeneratedColumnWrite(s))
 	})
 }
 
@@ -2066,54 +2067,57 @@ func SubTestMultiUpdate(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestGeneratedColumnWrite(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	_, err := tk.Exec(`CREATE TABLE test_gc_write (a int primary key auto_increment, b int, c int as (a+8) virtual)`)
-	c.Assert(err.Error(), Equals, ddl.ErrGeneratedColumnRefAutoInc.GenWithStackByArgs("c").Error())
-	tk.MustExec(`CREATE TABLE test_gc_write (a int primary key auto_increment, b int, c int as (b+8) virtual)`)
-	tk.MustExec(`CREATE TABLE test_gc_write_1 (a int primary key, b int, c int)`)
+func SubTestGeneratedColumnWrite(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		_, err := tk.Exec(`CREATE TABLE test_gc_write (a int primary key auto_increment, b int, c int as (a+8) virtual)`)
+		require.Equal(t, ddl.ErrGeneratedColumnRefAutoInc.GenWithStackByArgs("c").Error(), err.Error())
+		tk.MustExec(`CREATE TABLE test_gc_write (a int primary key auto_increment, b int, c int as (b+8) virtual)`)
+		tk.MustExec(`CREATE TABLE test_gc_write_1 (a int primary key, b int, c int)`)
 
-	tests := []struct {
-		stmt string
-		err  int
-	}{
-		// Can't modify generated column by values.
-		{`insert into test_gc_write (a, b, c) values (1, 1, 1)`, mysql.ErrBadGeneratedColumn},
-		{`insert into test_gc_write values (1, 1, 1)`, mysql.ErrBadGeneratedColumn},
-		// Can't modify generated column by select clause.
-		{`insert into test_gc_write select 1, 1, 1`, mysql.ErrBadGeneratedColumn},
-		// Can't modify generated column by on duplicate clause.
-		{`insert into test_gc_write (a, b) values (1, 1) on duplicate key update c = 1`, mysql.ErrBadGeneratedColumn},
-		// Can't modify generated column by set.
-		{`insert into test_gc_write set a = 1, b = 1, c = 1`, mysql.ErrBadGeneratedColumn},
-		// Can't modify generated column by update clause.
-		{`update test_gc_write set c = 1`, mysql.ErrBadGeneratedColumn},
-		// Can't modify generated column by multi-table update clause.
-		{`update test_gc_write, test_gc_write_1 set test_gc_write.c = 1`, mysql.ErrBadGeneratedColumn},
+		tests := []struct {
+			stmt string
+			err  int
+		}{
+			// Can't modify generated column by values.
+			{`insert into test_gc_write (a, b, c) values (1, 1, 1)`, mysql.ErrBadGeneratedColumn},
+			{`insert into test_gc_write values (1, 1, 1)`, mysql.ErrBadGeneratedColumn},
+			// Can't modify generated column by select clause.
+			{`insert into test_gc_write select 1, 1, 1`, mysql.ErrBadGeneratedColumn},
+			// Can't modify generated column by on duplicate clause.
+			{`insert into test_gc_write (a, b) values (1, 1) on duplicate key update c = 1`, mysql.ErrBadGeneratedColumn},
+			// Can't modify generated column by set.
+			{`insert into test_gc_write set a = 1, b = 1, c = 1`, mysql.ErrBadGeneratedColumn},
+			// Can't modify generated column by update clause.
+			{`update test_gc_write set c = 1`, mysql.ErrBadGeneratedColumn},
+			// Can't modify generated column by multi-table update clause.
+			{`update test_gc_write, test_gc_write_1 set test_gc_write.c = 1`, mysql.ErrBadGeneratedColumn},
 
-		// Can insert without generated columns.
-		{`insert into test_gc_write (a, b) values (1, 1)`, 0},
-		{`insert into test_gc_write set a = 2, b = 2`, 0},
-		{`insert into test_gc_write (b) select c from test_gc_write`, 0},
-		// Can update without generated columns.
-		{`update test_gc_write set b = 2 where a = 2`, 0},
-		{`update test_gc_write t1, test_gc_write_1 t2 set t1.b = 3, t2.b = 4`, 0},
+			// Can insert without generated columns.
+			{`insert into test_gc_write (a, b) values (1, 1)`, 0},
+			{`insert into test_gc_write set a = 2, b = 2`, 0},
+			{`insert into test_gc_write (b) select c from test_gc_write`, 0},
+			// Can update without generated columns.
+			{`update test_gc_write set b = 2 where a = 2`, 0},
+			{`update test_gc_write t1, test_gc_write_1 t2 set t1.b = 3, t2.b = 4`, 0},
 
-		// But now we can't do this, just as same with MySQL 5.7:
-		{`insert into test_gc_write values (1, 1)`, mysql.ErrWrongValueCountOnRow},
-		{`insert into test_gc_write select 1, 1`, mysql.ErrWrongValueCountOnRow},
-		{`insert into test_gc_write (c) select a, b from test_gc_write`, mysql.ErrWrongValueCountOnRow},
-		{`insert into test_gc_write (b, c) select a, b from test_gc_write`, mysql.ErrBadGeneratedColumn},
-	}
-	for _, tt := range tests {
-		_, err := tk.Exec(tt.stmt)
-		if tt.err != 0 {
-			c.Assert(err, NotNil, Commentf("sql is `%v`", tt.stmt))
-			terr := errors.Cause(err).(*terror.Error)
-			c.Assert(terr.Code(), Equals, errors.ErrCode(tt.err), Commentf("sql is %v", tt.stmt))
-		} else {
-			c.Assert(err, IsNil)
+			// But now we can't do this, just as same with MySQL 5.7:
+			{`insert into test_gc_write values (1, 1)`, mysql.ErrWrongValueCountOnRow},
+			{`insert into test_gc_write select 1, 1`, mysql.ErrWrongValueCountOnRow},
+			{`insert into test_gc_write (c) select a, b from test_gc_write`, mysql.ErrWrongValueCountOnRow},
+			{`insert into test_gc_write (b, c) select a, b from test_gc_write`, mysql.ErrBadGeneratedColumn},
+		}
+		for _, tt := range tests {
+			_, err := tk.Exec(tt.stmt)
+			if tt.err != 0 {
+				require.Errorf(t, err, "sql is `%v`", tt.stmt)
+				terr := errors.Cause(err).(*terror.Error)
+				require.Equalf(t, errors.ErrCode(tt.err), terr.Code(), "sql is %v", tt.stmt)
+			} else {
+				require.NoError(t, err)
+			}
 		}
 	}
 }
