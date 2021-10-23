@@ -299,6 +299,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestGeneratedColumnWrite", SubTestGeneratedColumnWrite(s))
 		t.Run("TestGeneratedColumnRead", SubTestGeneratedColumnRead(s))
 		t.Run("TestGeneratedColumnPointGet", SubTestGeneratedColumnPointGet(s))
+		t.Run("TestUnionAutoSignedCast", SubTestUnionAutoSignedCast(s))
 	})
 }
 
@@ -4405,44 +4406,47 @@ func (s *testSuite3) TestSortLeftJoinWithNullColumnInRightChildPanic(c *C) {
 		Check(testkit.Rows("<nil>"))
 }
 
-func (s *testSuiteP1) TestUnionAutoSignedCast(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t1,t2")
-	tk.MustExec("create table t1 (id int, i int, b bigint, d double, dd decimal)")
-	tk.MustExec("create table t2 (id int, i int unsigned, b bigint unsigned, d double unsigned, dd decimal unsigned)")
-	tk.MustExec("insert into t1 values(1, -1, -1, -1.1, -1)")
-	tk.MustExec("insert into t2 values(2, 1, 1, 1.1, 1)")
-	tk.MustQuery("select * from t1 union select * from t2 order by id").
-		Check(testkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
-	tk.MustQuery("select id, i, b, d, dd from t2 union select id, i, b, d, dd from t1 order by id").
-		Check(testkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
-	tk.MustQuery("select id, i from t2 union select id, cast(i as unsigned int) from t1 order by id").
-		Check(testkit.Rows("1 18446744073709551615", "2 1"))
-	tk.MustQuery("select dd from t2 union all select dd from t2").
-		Check(testkit.Rows("1", "1"))
+func SubTestUnionAutoSignedCast(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t1,t2")
+		tk.MustExec("create table t1 (id int, i int, b bigint, d double, dd decimal)")
+		tk.MustExec("create table t2 (id int, i int unsigned, b bigint unsigned, d double unsigned, dd decimal unsigned)")
+		tk.MustExec("insert into t1 values(1, -1, -1, -1.1, -1)")
+		tk.MustExec("insert into t2 values(2, 1, 1, 1.1, 1)")
+		tk.MustQuery("select * from t1 union select * from t2 order by id").
+			Check(newtestkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
+		tk.MustQuery("select id, i, b, d, dd from t2 union select id, i, b, d, dd from t1 order by id").
+			Check(newtestkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
+		tk.MustQuery("select id, i from t2 union select id, cast(i as unsigned int) from t1 order by id").
+			Check(newtestkit.Rows("1 18446744073709551615", "2 1"))
+		tk.MustQuery("select dd from t2 union all select dd from t2").
+			Check(newtestkit.Rows("1", "1"))
 
-	tk.MustExec("drop table if exists t3,t4")
-	tk.MustExec("create table t3 (id int, v int)")
-	tk.MustExec("create table t4 (id int, v double unsigned)")
-	tk.MustExec("insert into t3 values (1, -1)")
-	tk.MustExec("insert into t4 values (2, 1)")
-	tk.MustQuery("select id, v from t3 union select id, v from t4 order by id").
-		Check(testkit.Rows("1 -1", "2 1"))
-	tk.MustQuery("select id, v from t4 union select id, v from t3 order by id").
-		Check(testkit.Rows("1 -1", "2 1"))
+		tk.MustExec("drop table if exists t3,t4")
+		tk.MustExec("create table t3 (id int, v int)")
+		tk.MustExec("create table t4 (id int, v double unsigned)")
+		tk.MustExec("insert into t3 values (1, -1)")
+		tk.MustExec("insert into t4 values (2, 1)")
+		tk.MustQuery("select id, v from t3 union select id, v from t4 order by id").
+			Check(newtestkit.Rows("1 -1", "2 1"))
+		tk.MustQuery("select id, v from t4 union select id, v from t3 order by id").
+			Check(newtestkit.Rows("1 -1", "2 1"))
 
-	tk.MustExec("drop table if exists t5,t6,t7")
-	tk.MustExec("create table t5 (id int, v bigint unsigned)")
-	tk.MustExec("create table t6 (id int, v decimal)")
-	tk.MustExec("create table t7 (id int, v bigint)")
-	tk.MustExec("insert into t5 values (1, 1)")
-	tk.MustExec("insert into t6 values (2, -1)")
-	tk.MustExec("insert into t7 values (3, -1)")
-	tk.MustQuery("select id, v from t5 union select id, v from t6 order by id").
-		Check(testkit.Rows("1 1", "2 -1"))
-	tk.MustQuery("select id, v from t5 union select id, v from t7 union select id, v from t6 order by id").
-		Check(testkit.Rows("1 1", "2 -1", "3 -1"))
+		tk.MustExec("drop table if exists t5,t6,t7")
+		tk.MustExec("create table t5 (id int, v bigint unsigned)")
+		tk.MustExec("create table t6 (id int, v decimal)")
+		tk.MustExec("create table t7 (id int, v bigint)")
+		tk.MustExec("insert into t5 values (1, 1)")
+		tk.MustExec("insert into t6 values (2, -1)")
+		tk.MustExec("insert into t7 values (3, -1)")
+		tk.MustQuery("select id, v from t5 union select id, v from t6 order by id").
+			Check(newtestkit.Rows("1 1", "2 -1"))
+		tk.MustQuery("select id, v from t5 union select id, v from t7 union select id, v from t6 order by id").
+			Check(newtestkit.Rows("1 1", "2 -1", "3 -1"))
+	}
 }
 
 func (s *testSuiteP1) TestUpdateClustered(c *C) {
