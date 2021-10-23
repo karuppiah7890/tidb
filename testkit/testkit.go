@@ -81,6 +81,12 @@ func (tk *TestKit) MustExec(sql string, args ...interface{}) {
 	}
 }
 
+// CheckExecResult checks the affected rows and the insert id after executing MustExec.
+func (tk *TestKit) CheckExecResult(t *testing.T, affectedRows, insertID int64) {
+	require.Equal(t, int64(tk.Session().AffectedRows()), affectedRows)
+	require.Equal(t, int64(tk.Session().LastInsertID()), insertID)
+}
+
 // MustQuery query the statements and returns result rows.
 // If expected result is set it asserts the query result equals expected result.
 func (tk *TestKit) MustQuery(sql string, args ...interface{}) *Result {
