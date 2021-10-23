@@ -286,14 +286,14 @@ func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t(id int primary key, a int)")
-		tk.MustExec("insert into t values(1, 1)")
+		tk.MustExec("drop table if exists testpessimisticselect")
+		tk.MustExec("create table testpessimisticselect(id int primary key, a int)")
+		tk.MustExec("insert into testpessimisticselect values(1, 1)")
 		tk.MustExec("begin PESSIMISTIC")
-		tk.MustQuery("select a from t where id=1 for update").Check(testkit.Rows("1"))
-		tk.MustExec("update t set a=a+1 where id=1")
+		tk.MustQuery("select a from testpessimisticselect where id=1 for update").Check(testkit.Rows("1"))
+		tk.MustExec("update testpessimisticselect set a=a+1 where id=1")
 		tk.MustExec("commit")
-		tk.MustQuery("select a from t where id=1").Check(testkit.Rows("2"))
+		tk.MustQuery("select a from testpessimisticselect where id=1").Check(testkit.Rows("2"))
 	}
 }
 
