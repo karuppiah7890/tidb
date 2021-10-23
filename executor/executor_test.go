@@ -64,6 +64,7 @@ import (
 	"github.com/pingcap/tidb/table"
 	"github.com/pingcap/tidb/table/tables"
 	"github.com/pingcap/tidb/tablecodec"
+	newtestkit "github.com/pingcap/tidb/testkit"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util"
 	"github.com/pingcap/tidb/util/admin"
@@ -79,6 +80,7 @@ import (
 	"github.com/pingcap/tidb/util/testutil"
 	"github.com/pingcap/tidb/util/timeutil"
 	"github.com/pingcap/tipb/go-tipb"
+	"github.com/stretchr/testify/require"
 	"github.com/tikv/client-go/v2/oracle"
 	"github.com/tikv/client-go/v2/testutils"
 	"github.com/tikv/client-go/v2/tikv"
@@ -168,6 +170,7 @@ type baseTestSuite struct {
 
 var mockTikv = flag.Bool("mockTikv", true, "use mock tikv store in executor test")
 
+// TODO(karuppiah8900): Remove / move this later. Moving - move to appropriate place
 func (s *baseTestSuite) SetUpSuite(c *C) {
 	s.Parser = parser.New()
 	flag.Lookup("mockTikv")
@@ -186,6 +189,31 @@ func (s *baseTestSuite) SetUpSuite(c *C) {
 	}
 	d, err := session.BootstrapSession(s.store)
 	c.Assert(err, IsNil)
+	d.SetStatsUpdating(true)
+	s.domain = d
+	config.UpdateGlobal(func(conf *config.Config) {
+		conf.OOMAction = config.OOMActionLog
+	})
+}
+
+func (s *baseTestSuite) NewSetUpSuite(t *testing.T) {
+	s.Parser = parser.New()
+	flag.Lookup("mockTikv")
+	useMockTikv := *mockTikv
+	if useMockTikv {
+		store, err := mockstore.NewMockStore(
+			mockstore.WithClusterInspector(func(c testutils.Cluster) {
+				mockstore.BootstrapWithSingleStore(c)
+				s.cluster = c
+			}),
+		)
+		require.NoError(t, err)
+		s.store = store
+		session.SetSchemaLease(0)
+		session.DisableStats4Test()
+	}
+	d, err := session.BootstrapSession(s.store)
+	require.NoError(t, err)
 	d.SetStatsUpdating(true)
 	s.domain = d
 	config.UpdateGlobal(func(conf *config.Config) {
@@ -220,6 +248,11 @@ func (s *baseTestSuite) TearDownSuite(c *C) {
 	c.Assert(s.store.Close(), IsNil)
 }
 
+func (s *baseTestSuite) NewTearDownSuite(t *testing.T) {
+	s.domain.Close()
+	require.NoError(t, s.store.Close())
+}
+
 func (s *globalIndexSuite) SetUpSuite(c *C) {
 	s.baseTestSuite.SetUpSuite(c)
 	config.UpdateGlobal(func(conf *config.Config) {
@@ -227,17 +260,31 @@ func (s *globalIndexSuite) SetUpSuite(c *C) {
 	})
 }
 
-func (s *testSuiteP1) TestPessimisticSelectForUpdate(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(id int primary key, a int)")
-	tk.MustExec("insert into t values(1, 1)")
-	tk.MustExec("begin PESSIMISTIC")
-	tk.MustQuery("select a from t where id=1 for update").Check(testkit.Rows("1"))
-	tk.MustExec("update t set a=a+1 where id=1")
-	tk.MustExec("commit")
-	tk.MustQuery("select a from t where id=1").Check(testkit.Rows("2"))
+func TestSuiteP1(t *testing.T) {
+	// TODO(karuppiah7890): Maybe we can use baseTestSuite directly instead of testSuiteP1 wrapper?
+	// And maybe name baseTestSuite differently? hmm
+	s := &testSuiteP1{&baseTestSuite{}}
+	s.NewSetUpSuite(t)
+	defer s.NewTearDownSuite(t)
+	t.Run("Tests", func(t *testing.T) {
+		t.Run("TestPessimisticSelectForUpdate", SubTestPessimisticSelectForUpdate(s))
+	})
+}
+
+func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(id int primary key, a int)")
+		tk.MustExec("insert into t values(1, 1)")
+		tk.MustExec("begin PESSIMISTIC")
+		tk.MustQuery("select a from t where id=1 for update").Check(testkit.Rows("1"))
+		tk.MustExec("update t set a=a+1 where id=1")
+		tk.MustExec("commit")
+		tk.MustQuery("select a from t where id=1").Check(testkit.Rows("2"))
+	}
 }
 
 func (s *testSuite) TearDownTest(c *C) {
