@@ -285,6 +285,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestOrderBy", SubTestOrderBy(s))
 		t.Run("TestSelectErrorRow", SubTestSelectErrorRow(s))
 		t.Run("TestIssue2612", SubTestIssue2612(s))
+		t.Run("TestIssue345", SubTestIssue345(s))
 	})
 }
 
@@ -1269,36 +1270,39 @@ func SubTestIssue2612(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-// TestIssue345 is related with https://github.com/pingcap/tidb/issues/345
-func (s *testSuiteP1) TestIssue345(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec(`drop table if exists t1, t2`)
-	tk.MustExec(`create table t1 (c1 int);`)
-	tk.MustExec(`create table t2 (c2 int);`)
-	tk.MustExec(`insert into t1 values (1);`)
-	tk.MustExec(`insert into t2 values (2);`)
-	tk.MustExec(`update t1, t2 set t1.c1 = 2, t2.c2 = 1;`)
-	tk.MustExec(`update t1, t2 set c1 = 2, c2 = 1;`)
-	tk.MustExec(`update t1 as a, t2 as b set a.c1 = 2, b.c2 = 1;`)
+// SubTestIssue345 is related with https://github.com/pingcap/tidb/issues/345
+func SubTestIssue345(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec(`drop table if exists t1, t2`)
+		tk.MustExec(`create table t1 (c1 int);`)
+		tk.MustExec(`create table t2 (c2 int);`)
+		tk.MustExec(`insert into t1 values (1);`)
+		tk.MustExec(`insert into t2 values (2);`)
+		tk.MustExec(`update t1, t2 set t1.c1 = 2, t2.c2 = 1;`)
+		tk.MustExec(`update t1, t2 set c1 = 2, c2 = 1;`)
+		tk.MustExec(`update t1 as a, t2 as b set a.c1 = 2, b.c2 = 1;`)
 
-	// Check t1 content
-	r := tk.MustQuery("SELECT * FROM t1;")
-	r.Check(testkit.Rows("2"))
-	// Check t2 content
-	r = tk.MustQuery("SELECT * FROM t2;")
-	r.Check(testkit.Rows("1"))
+		// Check t1 content
+		r := tk.MustQuery("SELECT * FROM t1;")
+		r.Check(newtestkit.Rows("2"))
+		// Check t2 content
+		r = tk.MustQuery("SELECT * FROM t2;")
+		r.Check(newtestkit.Rows("1"))
 
-	tk.MustExec(`update t1 as a, t2 as t1 set a.c1 = 1, t1.c2 = 2;`)
-	// Check t1 content
-	r = tk.MustQuery("SELECT * FROM t1;")
-	r.Check(testkit.Rows("1"))
-	// Check t2 content
-	r = tk.MustQuery("SELECT * FROM t2;")
-	r.Check(testkit.Rows("2"))
+		tk.MustExec(`update t1 as a, t2 as t1 set a.c1 = 1, t1.c2 = 2;`)
+		// Check t1 content
+		r = tk.MustQuery("SELECT * FROM t1;")
+		r.Check(newtestkit.Rows("1"))
+		// Check t2 content
+		r = tk.MustQuery("SELECT * FROM t2;")
+		r.Check(newtestkit.Rows("2"))
 
-	_, err := tk.Exec(`update t1 as a, t2 set t1.c1 = 10;`)
-	c.Assert(err, NotNil)
+		_, err := tk.Exec(`update t1 as a, t2 set t1.c1 = 10;`)
+		require.Error(t, err)
+	}
 }
 
 func (s *testSuiteP1) TestIssue5055(c *C) {
