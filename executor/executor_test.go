@@ -298,6 +298,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestMultiUpdate", SubTestMultiUpdate(s))
 		t.Run("TestGeneratedColumnWrite", SubTestGeneratedColumnWrite(s))
 		t.Run("TestGeneratedColumnRead", SubTestGeneratedColumnRead(s))
+		t.Run("TestGeneratedColumnPointGet", SubTestGeneratedColumnPointGet(s))
 	})
 }
 
@@ -2129,201 +2130,204 @@ func SubTestGeneratedColumnRead(s *testSuiteP1) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
-	tk.MustExec("use test")
-	tk.MustExec(`CREATE TABLE test_gc_read(a int primary key, b int, c int as (a+b), d int as (a*b) stored, e int as (c*2))`)
+		tk.MustExec("use test")
+		tk.MustExec(`CREATE TABLE test_gc_read(a int primary key, b int, c int as (a+b), d int as (a*b) stored, e int as (c*2))`)
 
-	result := tk.MustQuery(`SELECT generation_expression FROM information_schema.columns WHERE table_name = 'test_gc_read' AND column_name = 'd'`)
-	result.Check(newtestkit.Rows("`a` * `b`"))
+		result := tk.MustQuery(`SELECT generation_expression FROM information_schema.columns WHERE table_name = 'test_gc_read' AND column_name = 'd'`)
+		result.Check(newtestkit.Rows("`a` * `b`"))
 
-	// Insert only column a and b, leave c and d be calculated from them.
-	tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (0,null),(1,2),(3,4)`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`))
+		// Insert only column a and b, leave c and d be calculated from them.
+		tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (0,null),(1,2),(3,4)`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`))
 
-	tk.MustExec(`INSERT INTO test_gc_read SET a = 5, b = 10`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 10 15 50 30`))
+		tk.MustExec(`INSERT INTO test_gc_read SET a = 5, b = 10`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 10 15 50 30`))
 
-	tk.MustExec(`REPLACE INTO test_gc_read (a, b) VALUES (5, 6)`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 6 11 30 22`))
+		tk.MustExec(`REPLACE INTO test_gc_read (a, b) VALUES (5, 6)`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 6 11 30 22`))
 
-	tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (5, 8) ON DUPLICATE KEY UPDATE b = 9`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 9 14 45 28`))
+		tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (5, 8) ON DUPLICATE KEY UPDATE b = 9`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `5 9 14 45 28`))
 
-	// Test select only-generated-column-without-dependences.
-	result = tk.MustQuery(`SELECT c, d FROM test_gc_read`)
-	result.Check(newtestkit.Rows(`<nil> <nil>`, `3 2`, `7 12`, `14 45`))
+		// Test select only-generated-column-without-dependences.
+		result = tk.MustQuery(`SELECT c, d FROM test_gc_read`)
+		result.Check(newtestkit.Rows(`<nil> <nil>`, `3 2`, `7 12`, `14 45`))
 
-	// Test select only virtual generated column that refers to other virtual generated columns.
-	result = tk.MustQuery(`SELECT e FROM test_gc_read`)
-	result.Check(newtestkit.Rows(`<nil>`, `6`, `14`, `28`))
+		// Test select only virtual generated column that refers to other virtual generated columns.
+		result = tk.MustQuery(`SELECT e FROM test_gc_read`)
+		result.Check(newtestkit.Rows(`<nil>`, `6`, `14`, `28`))
 
-	// Test order of on duplicate key update list.
-	tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (5, 8) ON DUPLICATE KEY UPDATE a = 6, b = a`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `6 6 12 36 24`))
+		// Test order of on duplicate key update list.
+		tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (5, 8) ON DUPLICATE KEY UPDATE a = 6, b = a`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `6 6 12 36 24`))
 
-	tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (6, 8) ON DUPLICATE KEY UPDATE b = 8, a = b`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
+		tk.MustExec(`INSERT INTO test_gc_read (a, b) VALUES (6, 8) ON DUPLICATE KEY UPDATE b = 8, a = b`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
 
-	// Test where-conditions on virtual/stored generated columns.
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 7`)
-	result.Check(newtestkit.Rows(`3 4 7 12 14`))
+		// Test where-conditions on virtual/stored generated columns.
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 7`)
+		result.Check(newtestkit.Rows(`3 4 7 12 14`))
 
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE d = 64`)
-	result.Check(newtestkit.Rows(`8 8 16 64 32`))
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE d = 64`)
+		result.Check(newtestkit.Rows(`8 8 16 64 32`))
 
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE e = 6`)
-	result.Check(newtestkit.Rows(`1 2 3 2 6`))
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE e = 6`)
+		result.Check(newtestkit.Rows(`1 2 3 2 6`))
 
-	// Test update where-conditions on virtual/generated columns.
-	tk.MustExec(`UPDATE test_gc_read SET a = a + 100 WHERE c = 7`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 107`)
-	result.Check(newtestkit.Rows(`103 4 107 412 214`))
+		// Test update where-conditions on virtual/generated columns.
+		tk.MustExec(`UPDATE test_gc_read SET a = a + 100 WHERE c = 7`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 107`)
+		result.Check(newtestkit.Rows(`103 4 107 412 214`))
 
-	// Test update where-conditions on virtual/generated columns.
-	tk.MustExec(`UPDATE test_gc_read m SET m.a = m.a + 100 WHERE c = 107`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 207`)
-	result.Check(newtestkit.Rows(`203 4 207 812 414`))
+		// Test update where-conditions on virtual/generated columns.
+		tk.MustExec(`UPDATE test_gc_read m SET m.a = m.a + 100 WHERE c = 107`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE c = 207`)
+		result.Check(newtestkit.Rows(`203 4 207 812 414`))
 
-	tk.MustExec(`UPDATE test_gc_read SET a = a - 200 WHERE d = 812`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE d = 12`)
-	result.Check(newtestkit.Rows(`3 4 7 12 14`))
+		tk.MustExec(`UPDATE test_gc_read SET a = a - 200 WHERE d = 812`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read WHERE d = 12`)
+		result.Check(newtestkit.Rows(`3 4 7 12 14`))
 
-	tk.MustExec(`INSERT INTO test_gc_read set a = 4, b = d + 1`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`,
-		`4 <nil> <nil> <nil> <nil>`, `8 8 16 64 32`))
-	tk.MustExec(`DELETE FROM test_gc_read where a = 4`)
+		tk.MustExec(`INSERT INTO test_gc_read set a = 4, b = d + 1`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`, `3 4 7 12 14`,
+			`4 <nil> <nil> <nil> <nil>`, `8 8 16 64 32`))
+		tk.MustExec(`DELETE FROM test_gc_read where a = 4`)
 
-	// Test on-conditions on virtual/stored generated columns.
-	tk.MustExec(`CREATE TABLE test_gc_help(a int primary key, b int, c int, d int, e int)`)
-	tk.MustExec(`INSERT INTO test_gc_help(a, b, c, d, e) SELECT * FROM test_gc_read`)
+		// Test on-conditions on virtual/stored generated columns.
+		tk.MustExec(`CREATE TABLE test_gc_help(a int primary key, b int, c int, d int, e int)`)
+		tk.MustExec(`INSERT INTO test_gc_help(a, b, c, d, e) SELECT * FROM test_gc_read`)
 
-	result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.c = t2.c ORDER BY t1.a`)
-	result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
+		result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.c = t2.c ORDER BY t1.a`)
+		result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
 
-	result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.d = t2.d ORDER BY t1.a`)
-	result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
+		result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.d = t2.d ORDER BY t1.a`)
+		result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
 
-	result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.e = t2.e ORDER BY t1.a`)
-	result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
+		result = tk.MustQuery(`SELECT t1.* FROM test_gc_read t1 JOIN test_gc_help t2 ON t1.e = t2.e ORDER BY t1.a`)
+		result.Check(newtestkit.Rows(`1 2 3 2 6`, `3 4 7 12 14`, `8 8 16 64 32`))
 
-	// Test generated column in subqueries.
-	result = tk.MustQuery(`SELECT * FROM test_gc_read t WHERE t.a not in (SELECT t.a FROM test_gc_read t where t.c > 5)`)
-	result.Sort().Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`))
+		// Test generated column in subqueries.
+		result = tk.MustQuery(`SELECT * FROM test_gc_read t WHERE t.a not in (SELECT t.a FROM test_gc_read t where t.c > 5)`)
+		result.Sort().Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 2 3 2 6`))
 
-	result = tk.MustQuery(`SELECT * FROM test_gc_read t WHERE t.c in (SELECT t.c FROM test_gc_read t where t.c > 5)`)
-	result.Sort().Check(newtestkit.Rows(`3 4 7 12 14`, `8 8 16 64 32`))
+		result = tk.MustQuery(`SELECT * FROM test_gc_read t WHERE t.c in (SELECT t.c FROM test_gc_read t where t.c > 5)`)
+		result.Sort().Check(newtestkit.Rows(`3 4 7 12 14`, `8 8 16 64 32`))
 
-	result = tk.MustQuery(`SELECT tt.b FROM test_gc_read tt WHERE tt.a = (SELECT max(t.a) FROM test_gc_read t WHERE t.c = tt.c) ORDER BY b`)
-	result.Check(newtestkit.Rows(`2`, `4`, `8`))
+		result = tk.MustQuery(`SELECT tt.b FROM test_gc_read tt WHERE tt.a = (SELECT max(t.a) FROM test_gc_read t WHERE t.c = tt.c) ORDER BY b`)
+		result.Check(newtestkit.Rows(`2`, `4`, `8`))
 
-	// Test aggregation on virtual/stored generated columns.
-	result = tk.MustQuery(`SELECT c, sum(a) aa, max(d) dd, sum(e) ee FROM test_gc_read GROUP BY c ORDER BY aa`)
-	result.Check(newtestkit.Rows(`<nil> 0 <nil> <nil>`, `3 1 2 6`, `7 3 12 14`, `16 8 64 32`))
+		// Test aggregation on virtual/stored generated columns.
+		result = tk.MustQuery(`SELECT c, sum(a) aa, max(d) dd, sum(e) ee FROM test_gc_read GROUP BY c ORDER BY aa`)
+		result.Check(newtestkit.Rows(`<nil> 0 <nil> <nil>`, `3 1 2 6`, `7 3 12 14`, `16 8 64 32`))
 
-	result = tk.MustQuery(`SELECT a, sum(c), sum(d), sum(e) FROM test_gc_read GROUP BY a ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil>`, `1 3 2 6`, `3 7 12 14`, `8 16 64 32`))
+		result = tk.MustQuery(`SELECT a, sum(c), sum(d), sum(e) FROM test_gc_read GROUP BY a ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil>`, `1 3 2 6`, `3 7 12 14`, `8 16 64 32`))
 
-	// Test multi-update on generated columns.
-	tk.MustExec(`UPDATE test_gc_read m, test_gc_read n SET m.b = m.b + 10, n.b = n.b + 10`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 12 13 12 26`, `3 14 17 42 34`, `8 18 26 144 52`))
+		// Test multi-update on generated columns.
+		tk.MustExec(`UPDATE test_gc_read m, test_gc_read n SET m.b = m.b + 10, n.b = n.b + 10`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read ORDER BY a`)
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 12 13 12 26`, `3 14 17 42 34`, `8 18 26 144 52`))
 
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int)")
-	tk.MustExec("insert into t values(8)")
-	tk.MustExec("update test_gc_read set a = a+1 where a in (select a from t)")
-	result = tk.MustQuery("select * from test_gc_read order by a")
-	result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 12 13 12 26`, `3 14 17 42 34`, `9 18 27 162 54`))
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int)")
+		tk.MustExec("insert into t values(8)")
+		tk.MustExec("update test_gc_read set a = a+1 where a in (select a from t)")
+		result = tk.MustQuery("select * from test_gc_read order by a")
+		result.Check(newtestkit.Rows(`0 <nil> <nil> <nil> <nil>`, `1 12 13 12 26`, `3 14 17 42 34`, `9 18 27 162 54`))
 
-	// Test different types between generation expression and generated column.
-	tk.MustExec(`CREATE TABLE test_gc_read_cast(a VARCHAR(255), b VARCHAR(255), c INT AS (JSON_EXTRACT(a, b)), d INT AS (JSON_EXTRACT(a, b)) STORED)`)
-	tk.MustExec(`INSERT INTO test_gc_read_cast (a, b) VALUES ('{"a": "3"}', '$.a')`)
-	result = tk.MustQuery(`SELECT c, d FROM test_gc_read_cast`)
-	result.Check(newtestkit.Rows(`3 3`))
+		// Test different types between generation expression and generated column.
+		tk.MustExec(`CREATE TABLE test_gc_read_cast(a VARCHAR(255), b VARCHAR(255), c INT AS (JSON_EXTRACT(a, b)), d INT AS (JSON_EXTRACT(a, b)) STORED)`)
+		tk.MustExec(`INSERT INTO test_gc_read_cast (a, b) VALUES ('{"a": "3"}', '$.a')`)
+		result = tk.MustQuery(`SELECT c, d FROM test_gc_read_cast`)
+		result.Check(newtestkit.Rows(`3 3`))
 
-	tk.MustExec(`CREATE TABLE test_gc_read_cast_1(a VARCHAR(255), b VARCHAR(255), c ENUM("red", "yellow") AS (JSON_UNQUOTE(JSON_EXTRACT(a, b))))`)
-	tk.MustExec(`INSERT INTO test_gc_read_cast_1 (a, b) VALUES ('{"a": "yellow"}', '$.a')`)
-	result = tk.MustQuery(`SELECT c FROM test_gc_read_cast_1`)
-	result.Check(newtestkit.Rows(`yellow`))
+		tk.MustExec(`CREATE TABLE test_gc_read_cast_1(a VARCHAR(255), b VARCHAR(255), c ENUM("red", "yellow") AS (JSON_UNQUOTE(JSON_EXTRACT(a, b))))`)
+		tk.MustExec(`INSERT INTO test_gc_read_cast_1 (a, b) VALUES ('{"a": "yellow"}', '$.a')`)
+		result = tk.MustQuery(`SELECT c FROM test_gc_read_cast_1`)
+		result.Check(newtestkit.Rows(`yellow`))
 
-	tk.MustExec(`CREATE TABLE test_gc_read_cast_2( a JSON, b JSON AS (a->>'$.a'))`)
-	tk.MustExec(`INSERT INTO test_gc_read_cast_2(a) VALUES ('{"a": "{    \\\"key\\\": \\\"\\u6d4b\\\"    }"}')`)
-	result = tk.MustQuery(`SELECT b FROM test_gc_read_cast_2`)
-	result.Check(newtestkit.Rows(`{"key": "测"}`))
+		tk.MustExec(`CREATE TABLE test_gc_read_cast_2( a JSON, b JSON AS (a->>'$.a'))`)
+		tk.MustExec(`INSERT INTO test_gc_read_cast_2(a) VALUES ('{"a": "{    \\\"key\\\": \\\"\\u6d4b\\\"    }"}')`)
+		result = tk.MustQuery(`SELECT b FROM test_gc_read_cast_2`)
+		result.Check(newtestkit.Rows(`{"key": "测"}`))
 
-	tk.MustExec(`CREATE TABLE test_gc_read_cast_3( a JSON, b JSON AS (a->>'$.a'), c INT AS (b * 3.14) )`)
-	tk.MustExec(`INSERT INTO test_gc_read_cast_3(a) VALUES ('{"a": "5"}')`)
-	result = tk.MustQuery(`SELECT c FROM test_gc_read_cast_3`)
-	result.Check(newtestkit.Rows(`16`))
+		tk.MustExec(`CREATE TABLE test_gc_read_cast_3( a JSON, b JSON AS (a->>'$.a'), c INT AS (b * 3.14) )`)
+		tk.MustExec(`INSERT INTO test_gc_read_cast_3(a) VALUES ('{"a": "5"}')`)
+		result = tk.MustQuery(`SELECT c FROM test_gc_read_cast_3`)
+		result.Check(newtestkit.Rows(`16`))
 
-	_, err := tk.Exec(`INSERT INTO test_gc_read_cast_1 (a, b) VALUES ('{"a": "invalid"}', '$.a')`)
-	require.Error(t, err)
+		_, err := tk.Exec(`INSERT INTO test_gc_read_cast_1 (a, b) VALUES ('{"a": "invalid"}', '$.a')`)
+		require.Error(t, err)
 
-	// Test read generated columns after drop some irrelevant column
-	tk.MustExec(`DROP TABLE IF EXISTS test_gc_read_m`)
-	tk.MustExec(`CREATE TABLE test_gc_read_m (a int primary key, b int, c int as (a+1), d int as (c*2))`)
-	tk.MustExec(`INSERT INTO test_gc_read_m(a) values (1), (2)`)
-	tk.MustExec(`ALTER TABLE test_gc_read_m DROP b`)
-	result = tk.MustQuery(`SELECT * FROM test_gc_read_m`)
-	result.Check(newtestkit.Rows(`1 2 4`, `2 3 6`))
+		// Test read generated columns after drop some irrelevant column
+		tk.MustExec(`DROP TABLE IF EXISTS test_gc_read_m`)
+		tk.MustExec(`CREATE TABLE test_gc_read_m (a int primary key, b int, c int as (a+1), d int as (c*2))`)
+		tk.MustExec(`INSERT INTO test_gc_read_m(a) values (1), (2)`)
+		tk.MustExec(`ALTER TABLE test_gc_read_m DROP b`)
+		result = tk.MustQuery(`SELECT * FROM test_gc_read_m`)
+		result.Check(newtestkit.Rows(`1 2 4`, `2 3 6`))
 
-	// Test not null generated columns.
-	tk.MustExec(`CREATE TABLE test_gc_read_1(a int primary key, b int, c int as (a+b) not null, d int as (a*b) stored)`)
-	tk.MustExec(`CREATE TABLE test_gc_read_2(a int primary key, b int, c int as (a+b), d int as (a*b) stored not null)`)
-	tests := []struct {
-		stmt string
-		err  int
-	}{
-		// Can't insert these records, because generated columns are not null.
-		{`insert into test_gc_read_1(a, b) values (1, null)`, mysql.ErrBadNull},
-		{`insert into test_gc_read_2(a, b) values (1, null)`, mysql.ErrBadNull},
-	}
-	for _, tt := range tests {
-		_, err := tk.Exec(tt.stmt)
-		if tt.err != 0 {
-			require.Error(t, err)
-			terr := errors.Cause(err).(*terror.Error)
-			require.Equal(t, errors.ErrCode(tt.err), terr.Code())
-		} else {
-			require.NoError(t, err)
+		// Test not null generated columns.
+		tk.MustExec(`CREATE TABLE test_gc_read_1(a int primary key, b int, c int as (a+b) not null, d int as (a*b) stored)`)
+		tk.MustExec(`CREATE TABLE test_gc_read_2(a int primary key, b int, c int as (a+b), d int as (a*b) stored not null)`)
+		tests := []struct {
+			stmt string
+			err  int
+		}{
+			// Can't insert these records, because generated columns are not null.
+			{`insert into test_gc_read_1(a, b) values (1, null)`, mysql.ErrBadNull},
+			{`insert into test_gc_read_2(a, b) values (1, null)`, mysql.ErrBadNull},
+		}
+		for _, tt := range tests {
+			_, err := tk.Exec(tt.stmt)
+			if tt.err != 0 {
+				require.Error(t, err)
+				terr := errors.Cause(err).(*terror.Error)
+				require.Equal(t, errors.ErrCode(tt.err), terr.Code())
+			} else {
+				require.NoError(t, err)
+			}
 		}
 	}
 }
-}
 
-// TestGeneratedColumnRead tests generated columns using point get and batch point get
-func (s *testSuiteP1) TestGeneratedColumnPointGet(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists tu")
-	tk.MustExec("CREATE TABLE tu(a int, b int, c int GENERATED ALWAYS AS (a + b) VIRTUAL, d int as (a * b) stored, " +
-		"e int GENERATED ALWAYS as (b * 2) VIRTUAL, PRIMARY KEY (a), UNIQUE KEY ukc (c), unique key ukd(d), key ke(e))")
-	tk.MustExec("insert into tu(a, b) values(1, 2)")
-	tk.MustExec("insert into tu(a, b) values(5, 6)")
-	tk.MustQuery("select * from tu for update").Check(testkit.Rows("1 2 3 2 4", "5 6 11 30 12"))
-	tk.MustQuery("select * from tu where a = 1").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select * from tu where a in (1, 2)").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select * from tu where c in (1, 2, 3)").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select * from tu where c = 3").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select d, e from tu where c = 3").Check(testkit.Rows("2 4"))
-	tk.MustQuery("select * from tu where d in (1, 2, 3)").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select * from tu where d = 2").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustQuery("select c, d from tu where d = 2").Check(testkit.Rows("3 2"))
-	tk.MustQuery("select d, e from tu where e = 4").Check(testkit.Rows("2 4"))
-	tk.MustQuery("select * from tu where e = 4").Check(testkit.Rows("1 2 3 2 4"))
-	tk.MustExec("update tu set a = a + 1, b = b + 1 where c = 11")
-	tk.MustQuery("select * from tu for update").Check(testkit.Rows("1 2 3 2 4", "6 7 13 42 14"))
-	tk.MustQuery("select * from tu where a = 6").Check(testkit.Rows("6 7 13 42 14"))
-	tk.MustQuery("select * from tu where c in (5, 6, 13)").Check(testkit.Rows("6 7 13 42 14"))
-	tk.MustQuery("select b, c, e, d from tu where c = 13").Check(testkit.Rows("7 13 14 42"))
-	tk.MustQuery("select a, e, d from tu where c in (5, 6, 13)").Check(testkit.Rows("6 14 42"))
-	tk.MustExec("drop table if exists tu")
+// SubTestGeneratedColumnRead tests generated columns using point get and batch point get
+func SubTestGeneratedColumnPointGet(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists tu")
+		tk.MustExec("CREATE TABLE tu(a int, b int, c int GENERATED ALWAYS AS (a + b) VIRTUAL, d int as (a * b) stored, " +
+			"e int GENERATED ALWAYS as (b * 2) VIRTUAL, PRIMARY KEY (a), UNIQUE KEY ukc (c), unique key ukd(d), key ke(e))")
+		tk.MustExec("insert into tu(a, b) values(1, 2)")
+		tk.MustExec("insert into tu(a, b) values(5, 6)")
+		tk.MustQuery("select * from tu for update").Check(newtestkit.Rows("1 2 3 2 4", "5 6 11 30 12"))
+		tk.MustQuery("select * from tu where a = 1").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select * from tu where a in (1, 2)").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select * from tu where c in (1, 2, 3)").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select * from tu where c = 3").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select d, e from tu where c = 3").Check(newtestkit.Rows("2 4"))
+		tk.MustQuery("select * from tu where d in (1, 2, 3)").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select * from tu where d = 2").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustQuery("select c, d from tu where d = 2").Check(newtestkit.Rows("3 2"))
+		tk.MustQuery("select d, e from tu where e = 4").Check(newtestkit.Rows("2 4"))
+		tk.MustQuery("select * from tu where e = 4").Check(newtestkit.Rows("1 2 3 2 4"))
+		tk.MustExec("update tu set a = a + 1, b = b + 1 where c = 11")
+		tk.MustQuery("select * from tu for update").Check(newtestkit.Rows("1 2 3 2 4", "6 7 13 42 14"))
+		tk.MustQuery("select * from tu where a = 6").Check(newtestkit.Rows("6 7 13 42 14"))
+		tk.MustQuery("select * from tu where c in (5, 6, 13)").Check(newtestkit.Rows("6 7 13 42 14"))
+		tk.MustQuery("select b, c, e, d from tu where c = 13").Check(newtestkit.Rows("7 13 14 42"))
+		tk.MustQuery("select a, e, d from tu where c in (5, 6, 13)").Check(newtestkit.Rows("6 14 42"))
+		tk.MustExec("drop table if exists tu")
+	}
 }
 
 func (s *testSuiteP2) TestToPBExpr(c *C) {
