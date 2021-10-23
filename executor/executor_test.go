@@ -275,6 +275,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestChangePumpAndDrainer", SubTestChangePumpAndDrainer(s))
 		t.Run("TestLoadStats", SubTestLoadStats(s))
 		t.Run("TestPlanReplayer", SubTestPlanReplayer(s))
+		t.Run("TestShow", SubTestShow(s))
 	})
 }
 
@@ -356,73 +357,76 @@ func SubTestPlanReplayer(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestShow(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("create database test_show;")
-	tk.MustExec("use test_show")
+func SubTestShow(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("create database test_show;")
+		tk.MustExec("use test_show")
 
-	tk.MustQuery("show engines")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int primary key)")
-	c.Assert(len(tk.MustQuery("show index in t").Rows()), Equals, 1)
-	c.Assert(len(tk.MustQuery("show index from t").Rows()), Equals, 1)
+		tk.MustQuery("show engines")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int primary key)")
+		require.Equal(t, 1, len(tk.MustQuery("show index in t").Rows()))
+		require.Equal(t, 1, len(tk.MustQuery("show index from t").Rows()))
 
-	tk.MustQuery("show charset").Check(testkit.Rows(
-		"ascii US ASCII ascii_bin 1",
-		"binary binary binary 1",
-		"latin1 Latin1 latin1_bin 1",
-		"utf8 UTF-8 Unicode utf8_bin 3",
-		"utf8mb4 UTF-8 Unicode utf8mb4_bin 4",
-	))
-	c.Assert(len(tk.MustQuery("show master status").Rows()), Equals, 1)
-	tk.MustQuery("show create database test_show").Check(testkit.Rows("test_show CREATE DATABASE `test_show` /*!40100 DEFAULT CHARACTER SET utf8mb4 */"))
-	tk.MustQuery("show privileges").Check(testkit.Rows("Alter Tables To alter the table",
-		"Alter routine Functions,Procedures To alter or drop stored functions/procedures",
-		"Create Databases,Tables,Indexes To create new databases and tables",
-		"Create routine Databases To use CREATE FUNCTION/PROCEDURE",
-		"Create temporary tables Databases To use CREATE TEMPORARY TABLE",
-		"Create view Tables To create new views",
-		"Create user Server Admin To create new users",
-		"Delete Tables To delete existing rows",
-		"Drop Databases,Tables To drop databases, tables, and views",
-		"Event Server Admin To create, alter, drop and execute events",
-		"Execute Functions,Procedures To execute stored routines",
-		"File File access on server To read and write files on the server",
-		"Grant option Databases,Tables,Functions,Procedures To give to other users those privileges you possess",
-		"Index Tables To create or drop indexes",
-		"Insert Tables To insert data into tables",
-		"Lock tables Databases To use LOCK TABLES (together with SELECT privilege)",
-		"Process Server Admin To view the plain text of currently executing queries",
-		"Proxy Server Admin To make proxy user possible",
-		"References Databases,Tables To have references on tables",
-		"Reload Server Admin To reload or refresh tables, logs and privileges",
-		"Replication client Server Admin To ask where the slave or master servers are",
-		"Replication slave Server Admin To read binary log events from the master",
-		"Select Tables To retrieve rows from table",
-		"Show databases Server Admin To see all databases with SHOW DATABASES",
-		"Show view Tables To see views with SHOW CREATE VIEW",
-		"Shutdown Server Admin To shut down the server",
-		"Super Server Admin To use KILL thread, SET GLOBAL, CHANGE MASTER, etc.",
-		"Trigger Tables To use triggers",
-		"Create tablespace Server Admin To create/alter/drop tablespaces",
-		"Update Tables To update existing rows",
-		"Usage Server Admin No privileges - allow connect only",
-		"BACKUP_ADMIN Server Admin ",
-		"RESTORE_ADMIN Server Admin ",
-		"SYSTEM_USER Server Admin ",
-		"SYSTEM_VARIABLES_ADMIN Server Admin ",
-		"ROLE_ADMIN Server Admin ",
-		"CONNECTION_ADMIN Server Admin ",
-		"PLACEMENT_ADMIN Server Admin ",
-		"DASHBOARD_CLIENT Server Admin ",
-		"RESTRICTED_TABLES_ADMIN Server Admin ",
-		"RESTRICTED_STATUS_ADMIN Server Admin ",
-		"RESTRICTED_VARIABLES_ADMIN Server Admin ",
-		"RESTRICTED_USER_ADMIN Server Admin ",
-		"RESTRICTED_CONNECTION_ADMIN Server Admin ",
-		"RESTRICTED_REPLICA_WRITER_ADMIN Server Admin ",
-	))
-	c.Assert(len(tk.MustQuery("show table status").Rows()), Equals, 1)
+		tk.MustQuery("show charset").Check(testkit.Rows(
+			"ascii US ASCII ascii_bin 1",
+			"binary binary binary 1",
+			"latin1 Latin1 latin1_bin 1",
+			"utf8 UTF-8 Unicode utf8_bin 3",
+			"utf8mb4 UTF-8 Unicode utf8mb4_bin 4",
+		))
+		require.Equal(t, 1, len(tk.MustQuery("show master status").Rows()))
+		tk.MustQuery("show create database test_show").Check(testkit.Rows("test_show CREATE DATABASE `test_show` /*!40100 DEFAULT CHARACTER SET utf8mb4 */"))
+		tk.MustQuery("show privileges").Check(testkit.Rows("Alter Tables To alter the table",
+			"Alter routine Functions,Procedures To alter or drop stored functions/procedures",
+			"Create Databases,Tables,Indexes To create new databases and tables",
+			"Create routine Databases To use CREATE FUNCTION/PROCEDURE",
+			"Create temporary tables Databases To use CREATE TEMPORARY TABLE",
+			"Create view Tables To create new views",
+			"Create user Server Admin To create new users",
+			"Delete Tables To delete existing rows",
+			"Drop Databases,Tables To drop databases, tables, and views",
+			"Event Server Admin To create, alter, drop and execute events",
+			"Execute Functions,Procedures To execute stored routines",
+			"File File access on server To read and write files on the server",
+			"Grant option Databases,Tables,Functions,Procedures To give to other users those privileges you possess",
+			"Index Tables To create or drop indexes",
+			"Insert Tables To insert data into tables",
+			"Lock tables Databases To use LOCK TABLES (together with SELECT privilege)",
+			"Process Server Admin To view the plain text of currently executing queries",
+			"Proxy Server Admin To make proxy user possible",
+			"References Databases,Tables To have references on tables",
+			"Reload Server Admin To reload or refresh tables, logs and privileges",
+			"Replication client Server Admin To ask where the slave or master servers are",
+			"Replication slave Server Admin To read binary log events from the master",
+			"Select Tables To retrieve rows from table",
+			"Show databases Server Admin To see all databases with SHOW DATABASES",
+			"Show view Tables To see views with SHOW CREATE VIEW",
+			"Shutdown Server Admin To shut down the server",
+			"Super Server Admin To use KILL thread, SET GLOBAL, CHANGE MASTER, etc.",
+			"Trigger Tables To use triggers",
+			"Create tablespace Server Admin To create/alter/drop tablespaces",
+			"Update Tables To update existing rows",
+			"Usage Server Admin No privileges - allow connect only",
+			"BACKUP_ADMIN Server Admin ",
+			"RESTORE_ADMIN Server Admin ",
+			"SYSTEM_USER Server Admin ",
+			"SYSTEM_VARIABLES_ADMIN Server Admin ",
+			"ROLE_ADMIN Server Admin ",
+			"CONNECTION_ADMIN Server Admin ",
+			"PLACEMENT_ADMIN Server Admin ",
+			"DASHBOARD_CLIENT Server Admin ",
+			"RESTRICTED_TABLES_ADMIN Server Admin ",
+			"RESTRICTED_STATUS_ADMIN Server Admin ",
+			"RESTRICTED_VARIABLES_ADMIN Server Admin ",
+			"RESTRICTED_USER_ADMIN Server Admin ",
+			"RESTRICTED_CONNECTION_ADMIN Server Admin ",
+			"RESTRICTED_REPLICA_WRITER_ADMIN Server Admin ",
+		))
+		require.Equal(t, 1, len(tk.MustQuery("show table status").Rows()))
+	}
 }
 
 func (s *testSuite3) TestAdmin(c *C) {
