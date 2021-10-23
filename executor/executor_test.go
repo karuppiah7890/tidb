@@ -281,6 +281,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectNull", SubTestSelectNull(s))
 		t.Run("TestSelectStringLiteral", SubTestSelectStringLiteral(s))
 		t.Run("TestSelectLimit", SubTestSelectLimit(s))
+		t.Run("TestSelectOrderBy", SubTestSelectOrderBy(s))
 	})
 }
 
@@ -1086,101 +1087,104 @@ func SubTestSelectLimit(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestSelectOrderBy(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	s.fillData(tk, "select_order_test")
+func SubTestSelectOrderBy(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		s.newfillData(t, tk, "select_order_test")
 
-	// Test star field
-	r := tk.MustQuery("select * from select_order_test where id = 1 order by id limit 1 offset 0;")
-	r.Check(testkit.Rows("1 hello"))
+		// Test star field
+		r := tk.MustQuery("select * from select_order_test where id = 1 order by id limit 1 offset 0;")
+		r.Check(newtestkit.Rows("1 hello"))
 
-	r = tk.MustQuery("select id from select_order_test order by id desc limit 1 ")
-	r.Check(testkit.Rows("2"))
+		r = tk.MustQuery("select id from select_order_test order by id desc limit 1 ")
+		r.Check(newtestkit.Rows("2"))
 
-	r = tk.MustQuery("select id from select_order_test order by id + 1 desc limit 1 ")
-	r.Check(testkit.Rows("2"))
+		r = tk.MustQuery("select id from select_order_test order by id + 1 desc limit 1 ")
+		r.Check(newtestkit.Rows("2"))
 
-	// Test limit
-	r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 0;")
-	r.Check(testkit.Rows("1 hello"))
+		// Test limit
+		r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 0;")
+		r.Check(newtestkit.Rows("1 hello"))
 
-	// Test limit
-	r = tk.MustQuery("select id as c1, name from select_order_test order by 2, id limit 1 offset 0;")
-	r.Check(testkit.Rows("1 hello"))
+		// Test limit
+		r = tk.MustQuery("select id as c1, name from select_order_test order by 2, id limit 1 offset 0;")
+		r.Check(newtestkit.Rows("1 hello"))
 
-	// Test limit overflow
-	r = tk.MustQuery("select * from select_order_test order by name, id limit 100 offset 0;")
-	r.Check(testkit.Rows("1 hello", "2 hello"))
+		// Test limit overflow
+		r = tk.MustQuery("select * from select_order_test order by name, id limit 100 offset 0;")
+		r.Check(newtestkit.Rows("1 hello", "2 hello"))
 
-	// Test offset overflow
-	r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 100;")
-	r.Check(testkit.Rows())
+		// Test offset overflow
+		r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 100;")
+		r.Check(newtestkit.Rows())
 
-	// Test limit exceeds int range.
-	r = tk.MustQuery("select id from select_order_test order by name, id limit 18446744073709551615;")
-	r.Check(testkit.Rows("1", "2"))
+		// Test limit exceeds int range.
+		r = tk.MustQuery("select id from select_order_test order by name, id limit 18446744073709551615;")
+		r.Check(newtestkit.Rows("1", "2"))
 
-	// Test multiple field
-	r = tk.MustQuery("select id, name from select_order_test where id = 1 group by id, name limit 1 offset 0;")
-	r.Check(testkit.Rows("1 hello"))
+		// Test multiple field
+		r = tk.MustQuery("select id, name from select_order_test where id = 1 group by id, name limit 1 offset 0;")
+		r.Check(newtestkit.Rows("1 hello"))
 
-	// Test limit + order by
-	for i := 3; i <= 10; i += 1 {
-		tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"zz\");", i))
+		// Test limit + order by
+		for i := 3; i <= 10; i += 1 {
+			tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"zz\");", i))
+		}
+		tk.MustExec("insert INTO select_order_test VALUES (10086, \"hi\");")
+		for i := 11; i <= 20; i += 1 {
+			tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"hh\");", i))
+		}
+		for i := 21; i <= 30; i += 1 {
+			tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"zz\");", i))
+		}
+		tk.MustExec("insert INTO select_order_test VALUES (1501, \"aa\");")
+		r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 3;")
+		r.Check(newtestkit.Rows("11 hh"))
+		tk.MustExec("drop table select_order_test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (c int, d int)")
+		tk.MustExec("insert t values (1, 1)")
+		tk.MustExec("insert t values (1, 2)")
+		tk.MustExec("insert t values (1, 3)")
+		r = tk.MustQuery("select 1-d as d from t order by d;")
+		r.Check(newtestkit.Rows("-2", "-1", "0"))
+		r = tk.MustQuery("select 1-d as d from t order by d + 1;")
+		r.Check(newtestkit.Rows("0", "-1", "-2"))
+		r = tk.MustQuery("select t.d from t order by d;")
+		r.Check(newtestkit.Rows("1", "2", "3"))
+
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (a int, b int, c int)")
+		tk.MustExec("insert t values (1, 2, 3)")
+		r = tk.MustQuery("select b from (select a,b from t order by a,c) t")
+		r.Check(newtestkit.Rows("2"))
+		r = tk.MustQuery("select b from (select a,b from t order by a,c limit 1) t")
+		r.Check(newtestkit.Rows("2"))
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int, b int, index idx(a))")
+		tk.MustExec("insert into t values(1, 1), (2, 2)")
+		tk.MustQuery("select * from t where 1 order by b").Check(newtestkit.Rows("1 1", "2 2"))
+		tk.MustQuery("select * from t where a between 1 and 2 order by a desc").Check(newtestkit.Rows("2 2", "1 1"))
+
+		// Test double read and topN is pushed down to first read plannercore.
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int primary key, b int, c int, index idx(b))")
+		tk.MustExec("insert into t values(1, 3, 1)")
+		tk.MustExec("insert into t values(2, 2, 2)")
+		tk.MustExec("insert into t values(3, 1, 3)")
+		tk.MustQuery("select * from t use index(idx) order by a desc limit 1").Check(newtestkit.Rows("3 1 3"))
+
+		// Test double read which needs to keep order.
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int, b int, key b (b))")
+		tk.Session().GetSessionVars().IndexLookupSize = 3
+		for i := 0; i < 10; i++ {
+			tk.MustExec(fmt.Sprintf("insert into t values(%d, %d)", i, 10-i))
+		}
+		tk.MustQuery("select a from t use index(b) order by b").Check(newtestkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1", "0"))
 	}
-	tk.MustExec("insert INTO select_order_test VALUES (10086, \"hi\");")
-	for i := 11; i <= 20; i += 1 {
-		tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"hh\");", i))
-	}
-	for i := 21; i <= 30; i += 1 {
-		tk.MustExec(fmt.Sprintf("insert INTO select_order_test VALUES (%d, \"zz\");", i))
-	}
-	tk.MustExec("insert INTO select_order_test VALUES (1501, \"aa\");")
-	r = tk.MustQuery("select * from select_order_test order by name, id limit 1 offset 3;")
-	r.Check(testkit.Rows("11 hh"))
-	tk.MustExec("drop table select_order_test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (c int, d int)")
-	tk.MustExec("insert t values (1, 1)")
-	tk.MustExec("insert t values (1, 2)")
-	tk.MustExec("insert t values (1, 3)")
-	r = tk.MustQuery("select 1-d as d from t order by d;")
-	r.Check(testkit.Rows("-2", "-1", "0"))
-	r = tk.MustQuery("select 1-d as d from t order by d + 1;")
-	r.Check(testkit.Rows("0", "-1", "-2"))
-	r = tk.MustQuery("select t.d from t order by d;")
-	r.Check(testkit.Rows("1", "2", "3"))
-
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int, b int, c int)")
-	tk.MustExec("insert t values (1, 2, 3)")
-	r = tk.MustQuery("select b from (select a,b from t order by a,c) t")
-	r.Check(testkit.Rows("2"))
-	r = tk.MustQuery("select b from (select a,b from t order by a,c limit 1) t")
-	r.Check(testkit.Rows("2"))
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int, b int, index idx(a))")
-	tk.MustExec("insert into t values(1, 1), (2, 2)")
-	tk.MustQuery("select * from t where 1 order by b").Check(testkit.Rows("1 1", "2 2"))
-	tk.MustQuery("select * from t where a between 1 and 2 order by a desc").Check(testkit.Rows("2 2", "1 1"))
-
-	// Test double read and topN is pushed down to first read plannercore.
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int primary key, b int, c int, index idx(b))")
-	tk.MustExec("insert into t values(1, 3, 1)")
-	tk.MustExec("insert into t values(2, 2, 2)")
-	tk.MustExec("insert into t values(3, 1, 3)")
-	tk.MustQuery("select * from t use index(idx) order by a desc limit 1").Check(testkit.Rows("3 1 3"))
-
-	// Test double read which needs to keep order.
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int, b int, key b (b))")
-	tk.Se.GetSessionVars().IndexLookupSize = 3
-	for i := 0; i < 10; i++ {
-		tk.MustExec(fmt.Sprintf("insert into t values(%d, %d)", i, 10-i))
-	}
-	tk.MustQuery("select a from t use index(b) order by b").Check(testkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1", "0"))
 }
 
 func (s *testSuiteP1) TestOrderBy(c *C) {
