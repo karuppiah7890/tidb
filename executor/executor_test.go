@@ -291,6 +291,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestIn", SubTestIn(s))
 		t.Run("TestTablePKisHandleScan", SubTestTablePKisHandleScan(s))
 		t.Run("TestIndexReverseOrder", SubTestIndexReverseOrder(s))
+		t.Run("TestTableReverseOrder", SubTestTableReverseOrder(s))
 	})
 }
 
@@ -1876,16 +1877,19 @@ func SubTestIndexReverseOrder(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestTableReverseOrder(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int primary key auto_increment, b int)")
-	tk.MustExec("insert t (b) values (1), (2), (3), (4), (5), (6), (7), (8), (9)")
-	result := tk.MustQuery("select b from t order by a desc")
-	result.Check(testkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1"))
-	result = tk.MustQuery("select a from t where a <3 or (a >=6 and a < 8) order by a desc")
-	result.Check(testkit.Rows("7", "6", "2", "1"))
+func SubTestTableReverseOrder(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (a int primary key auto_increment, b int)")
+		tk.MustExec("insert t (b) values (1), (2), (3), (4), (5), (6), (7), (8), (9)")
+		result := tk.MustQuery("select b from t order by a desc")
+		result.Check(newtestkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1"))
+		result = tk.MustQuery("select a from t where a <3 or (a >=6 and a < 8) order by a desc")
+		result.Check(newtestkit.Rows("7", "6", "2", "1"))
+	}
 }
 
 func (s *testSuiteP1) TestDefaultNull(c *C) {
