@@ -293,6 +293,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestIndexReverseOrder", SubTestIndexReverseOrder(s))
 		t.Run("TestTableReverseOrder", SubTestTableReverseOrder(s))
 		t.Run("TestDefaultNull", SubTestDefaultNull(s))
+		t.Run("TestUnsignedPKColumn", SubTestUnsignedPKColumn(s))
 	})
 }
 
@@ -1913,17 +1914,20 @@ func SubTestDefaultNull(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestUnsignedPKColumn(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int unsigned primary key, b int, c int, key idx_ba (b, c, a));")
-	tk.MustExec("insert t values (1, 1, 1)")
-	result := tk.MustQuery("select * from t;")
-	result.Check(testkit.Rows("1 1 1"))
-	tk.MustExec("update t set c=2 where a=1;")
-	result = tk.MustQuery("select * from t where b=1;")
-	result.Check(testkit.Rows("1 1 2"))
+func SubTestUnsignedPKColumn(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists test_unsigned_pk_column")
+		tk.MustExec("create table test_unsigned_pk_column (a int unsigned primary key, b int, c int, key idx_ba (b, c, a));")
+		tk.MustExec("insert test_unsigned_pk_column values (1, 1, 1)")
+		result := tk.MustQuery("select * from test_unsigned_pk_column;")
+		result.Check(testkit.Rows("1 1 1"))
+		tk.MustExec("update test_unsigned_pk_column set c=2 where a=1;")
+		result = tk.MustQuery("select * from test_unsigned_pk_column where b=1;")
+		result.Check(testkit.Rows("1 1 2"))
+	}
 }
 
 func (s *testSuiteP1) TestJSON(c *C) {
