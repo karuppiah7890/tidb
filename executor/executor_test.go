@@ -276,6 +276,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestLoadStats", SubTestLoadStats(s))
 		t.Run("TestPlanReplayer", SubTestPlanReplayer(s))
 		t.Run("TestShow", SubTestShow(s))
+		t.Run("TestSelectWithoutFrom", SubTestSelectWithoutFrom(s))
 	})
 }
 
@@ -702,18 +703,21 @@ func checkCases(tests []testCase, ld *executor.LoadDataInfo,
 	}
 }
 
-func (s *testSuiteP1) TestSelectWithoutFrom(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
+func SubTestSelectWithoutFrom(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
 
-	r := tk.MustQuery("select 1 + 2*3;")
-	r.Check(testkit.Rows("7"))
+		r := tk.MustQuery("select 1 + 2*3;")
+		r.Check(newtestkit.Rows("7"))
 
-	r = tk.MustQuery(`select _utf8"string";`)
-	r.Check(testkit.Rows("string"))
+		r = tk.MustQuery(`select _utf8"string";`)
+		r.Check(newtestkit.Rows("string"))
 
-	r = tk.MustQuery("select 1 order by 1;")
-	r.Check(testkit.Rows("1"))
+		r = tk.MustQuery("select 1 order by 1;")
+		r.Check(newtestkit.Rows("1"))
+	}
 }
 
 // TestSelectBackslashN Issue 3685.
