@@ -286,6 +286,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectErrorRow", SubTestSelectErrorRow(s))
 		t.Run("TestIssue2612", SubTestIssue2612(s))
 		t.Run("TestIssue345", SubTestIssue345(s))
+		t.Run("TestIssue5055", SubTestIssue5055(s))
 	})
 }
 
@@ -1305,16 +1306,19 @@ func SubTestIssue345(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestIssue5055(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec(`drop table if exists t1, t2`)
-	tk.MustExec(`create table t1 (a int);`)
-	tk.MustExec(`create table t2 (a int);`)
-	tk.MustExec(`insert into t1 values(1);`)
-	tk.MustExec(`insert into t2 values(1);`)
-	result := tk.MustQuery("select tbl1.* from (select t1.a, 1 from t1) tbl1 left join t2 tbl2 on tbl1.a = tbl2.a order by tbl1.a desc limit 1;")
-	result.Check(testkit.Rows("1 1"))
+func SubTestIssue5055(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec(`drop table if exists t1, t2`)
+		tk.MustExec(`create table t1 (a int);`)
+		tk.MustExec(`create table t2 (a int);`)
+		tk.MustExec(`insert into t1 values(1);`)
+		tk.MustExec(`insert into t2 values(1);`)
+		result := tk.MustQuery("select tbl1.* from (select t1.a, 1 from t1) tbl1 left join t2 tbl2 on tbl1.a = tbl2.a order by tbl1.a desc limit 1;")
+		result.Check(newtestkit.Rows("1 1"))
+	}
 }
 
 func (s *testSuiteWithData) TestSetOperation(c *C) {
