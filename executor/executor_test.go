@@ -279,6 +279,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectWithoutFrom", SubTestSelectWithoutFrom(s))
 		t.Run("TestSelectBackslashN", SubTestSelectBackslashN(s))
 		t.Run("TestSelectNull", SubTestSelectNull(s))
+		t.Run("TestSelectStringLiteral", SubTestSelectStringLiteral(s))
 	})
 }
 
@@ -865,177 +866,180 @@ func SubTestSelectNull(s *testSuiteP1) func(t *testing.T) {
 }
 
 // TestSelectStringLiteral Issue #3686.
-func (s *testSuiteP1) TestSelectStringLiteral(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
+func SubTestSelectStringLiteral(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
 
-	sql := `select 'abc';`
-	r := tk.MustQuery(sql)
-	r.Check(testkit.Rows("abc"))
-	rs, err := tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields := rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `abc`)
-	c.Assert(rs.Close(), IsNil)
+		sql := `select 'abc';`
+		r := tk.MustQuery(sql)
+		r.Check(testkit.Rows("abc"))
+		rs, err := tk.Exec(sql)
+		require.NoError(t, err)
+		fields := rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `abc`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select (('abc'));`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("abc"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `abc`)
-	c.Assert(rs.Close(), IsNil)
+		sql = `select (('abc'));`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("abc"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `abc`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select 'abc'+'def';`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("0"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `'abc'+'def'`)
-	c.Assert(rs.Close(), IsNil)
+		sql = `select 'abc'+'def';`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("0"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `'abc'+'def'`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	// Below checks whether leading invalid chars are trimmed.
-	sql = "select '\n';"
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("\n"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "")
-	c.Assert(rs.Close(), IsNil)
+		// Below checks whether leading invalid chars are trimmed.
+		sql = "select '\n';"
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("\n"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = "select '\t   col';" // Lowercased letter is a valid char.
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "col")
-	c.Assert(rs.Close(), IsNil)
+		sql = "select '\t   col';" // Lowercased letter is a valid char.
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "col", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = "select '\t   Col';" // Uppercased letter is a valid char.
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "Col")
-	c.Assert(rs.Close(), IsNil)
+		sql = "select '\t   Col';" // Uppercased letter is a valid char.
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "Col", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = "select '\n\t   中文 col';" // Chinese char is a valid char.
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "中文 col")
-	c.Assert(rs.Close(), IsNil)
+		sql = "select '\n\t   中文 col';" // Chinese char is a valid char.
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "中文 col", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = "select ' \r\n  .col';" // Punctuation is a valid char.
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, ".col")
-	c.Assert(rs.Close(), IsNil)
+		sql = "select ' \r\n  .col';" // Punctuation is a valid char.
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, ".col", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = "select '   😆col';" // Emoji is a valid char.
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "😆col")
-	c.Assert(rs.Close(), IsNil)
+		sql = "select '   😆col';" // Emoji is a valid char.
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "😆col", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	// Below checks whether trailing invalid chars are preserved.
-	sql = `select 'abc   ';`
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "abc   ")
-	c.Assert(rs.Close(), IsNil)
+		// Below checks whether trailing invalid chars are preserved.
+		sql = `select 'abc   ';`
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "abc   ", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select '  abc   123   ';`
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "abc   123   ")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select '  abc   123   ';`
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "abc   123   ", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	// Issue #4239.
-	sql = `select 'a' ' ' 'string';`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("a string"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "a")
-	c.Assert(rs.Close(), IsNil)
+		// Issue #4239.
+		sql = `select 'a' ' ' 'string';`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("a string"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "a", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select 'a' " " "string";`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("a string"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "a")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select 'a' " " "string";`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("a string"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "a", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select 'string' 'string';`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("stringstring"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "string")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select 'string' 'string';`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("stringstring"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "string", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select "ss" "a";`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("ssa"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "ss")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select "ss" "a";`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("ssa"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "ss", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select "ss" "a" "b";`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("ssab"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "ss")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select "ss" "a" "b";`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("ssab"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "ss", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select "ss" "a" ' ' "b";`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("ssa b"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "ss")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select "ss" "a" ' ' "b";`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("ssa b"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "ss", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select "ss" "a" ' ' "b" ' ' "d";`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("ssa b d"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, "ss")
-	c.Assert(rs.Close(), IsNil)
+		sql = `select "ss" "a" ' ' "b" ' ' "d";`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("ssa b d"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, "ss", fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
+	}
 }
 
 func (s *testSuiteP1) TestSelectLimit(c *C) {
