@@ -289,6 +289,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestIssue5055", SubTestIssue5055(s))
 		t.Run("TestNeighbouringProj", SubTestNeighbouringProj(s))
 		t.Run("TestIn", SubTestIn(s))
+		t.Run("TestTablePKisHandleScan", SubTestTablePKisHandleScan(s))
 	})
 }
 
@@ -1705,65 +1706,68 @@ func SubTestIn(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestTablePKisHandleScan(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int PRIMARY KEY AUTO_INCREMENT)")
-	tk.MustExec("insert t values (),()")
-	tk.MustExec("insert t values (-100),(0)")
+func SubTestTablePKisHandleScan(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (a int PRIMARY KEY AUTO_INCREMENT)")
+		tk.MustExec("insert t values (),()")
+		tk.MustExec("insert t values (-100),(0)")
 
-	tests := []struct {
-		sql    string
-		result [][]interface{}
-	}{
-		{
-			"select * from t",
-			testkit.Rows("-100", "1", "2", "3"),
-		},
-		{
-			"select * from t where a = 1",
-			testkit.Rows("1"),
-		},
-		{
-			"select * from t where a != 1",
-			testkit.Rows("-100", "2", "3"),
-		},
-		{
-			"select * from t where a >= '1.1'",
-			testkit.Rows("2", "3"),
-		},
-		{
-			"select * from t where a < '1.1'",
-			testkit.Rows("-100", "1"),
-		},
-		{
-			"select * from t where a > '-100.1' and a < 2",
-			testkit.Rows("-100", "1"),
-		},
-		{
-			"select * from t where a is null",
-			testkit.Rows(),
-		}, {
-			"select * from t where a is true",
-			testkit.Rows("-100", "1", "2", "3"),
-		}, {
-			"select * from t where a is false",
-			testkit.Rows(),
-		},
-		{
-			"select * from t where a in (1, 2)",
-			testkit.Rows("1", "2"),
-		},
-		{
-			"select * from t where a between 1 and 2",
-			testkit.Rows("1", "2"),
-		},
-	}
+		tests := []struct {
+			sql    string
+			result [][]interface{}
+		}{
+			{
+				"select * from t",
+				testkit.Rows("-100", "1", "2", "3"),
+			},
+			{
+				"select * from t where a = 1",
+				testkit.Rows("1"),
+			},
+			{
+				"select * from t where a != 1",
+				testkit.Rows("-100", "2", "3"),
+			},
+			{
+				"select * from t where a >= '1.1'",
+				testkit.Rows("2", "3"),
+			},
+			{
+				"select * from t where a < '1.1'",
+				testkit.Rows("-100", "1"),
+			},
+			{
+				"select * from t where a > '-100.1' and a < 2",
+				testkit.Rows("-100", "1"),
+			},
+			{
+				"select * from t where a is null",
+				testkit.Rows(),
+			}, {
+				"select * from t where a is true",
+				testkit.Rows("-100", "1", "2", "3"),
+			}, {
+				"select * from t where a is false",
+				testkit.Rows(),
+			},
+			{
+				"select * from t where a in (1, 2)",
+				testkit.Rows("1", "2"),
+			},
+			{
+				"select * from t where a between 1 and 2",
+				testkit.Rows("1", "2"),
+			},
+		}
 
-	for _, tt := range tests {
-		result := tk.MustQuery(tt.sql)
-		result.Check(tt.result)
+		for _, tt := range tests {
+			result := tk.MustQuery(tt.sql)
+			result.Check(tt.result)
+		}
 	}
 }
 
