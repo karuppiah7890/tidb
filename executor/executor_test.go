@@ -367,9 +367,9 @@ func SubTestPlanReplayer(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t(a int, b int, index idx_a(a))")
-		tk.MustExec("plan replayer dump explain select * from t where a=10")
+		tk.MustExec("drop table if exists testplanreplayer")
+		tk.MustExec("create table testplanreplayer(a int, b int, index idx_a(a))")
+		tk.MustExec("plan replayer dump explain select * from testplanreplayer where a=10")
 	}
 }
 
@@ -1201,25 +1201,26 @@ func SubTestOrderBy(s *testSuiteP1) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (c1 int, c2 int, c3 varchar(20))")
-		tk.MustExec("insert into t values (1, 2, 'abc'), (2, 1, 'bcd')")
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists test_order_by")
+		tk.MustExec("create table test_order_by (c1 int, c2 int, c3 varchar(20))")
+		tk.MustExec("insert into test_order_by values (1, 2, 'abc'), (2, 1, 'bcd')")
 
 		// Fix issue https://github.com/pingcap/tidb/issues/337
-		tk.MustQuery("select c1 as a, c1 as b from t order by c1").Check(testkit.Rows("1 1", "2 2"))
+		tk.MustQuery("select c1 as a, c1 as b from test_order_by order by c1").Check(testkit.Rows("1 1", "2 2"))
 
-		tk.MustQuery("select c1 as a, t.c1 as a from t order by a desc").Check(testkit.Rows("2 2", "1 1"))
-		tk.MustQuery("select c1 as c2 from t order by c2").Check(testkit.Rows("1", "2"))
-		tk.MustQuery("select sum(c1) from t order by sum(c1)").Check(testkit.Rows("3"))
-		tk.MustQuery("select c1 as c2 from t order by c2 + 1").Check(testkit.Rows("2", "1"))
+		tk.MustQuery("select c1 as a, test_order_by.c1 as a from test_order_by order by a desc").Check(testkit.Rows("2 2", "1 1"))
+		tk.MustQuery("select c1 as c2 from test_order_by order by c2").Check(testkit.Rows("1", "2"))
+		tk.MustQuery("select sum(c1) from test_order_by order by sum(c1)").Check(testkit.Rows("3"))
+		tk.MustQuery("select c1 as c2 from test_order_by order by c2 + 1").Check(testkit.Rows("2", "1"))
 
 		// Order by position.
-		tk.MustQuery("select * from t order by 1").Check(testkit.Rows("1 2 abc", "2 1 bcd"))
-		tk.MustQuery("select * from t order by 2").Check(testkit.Rows("2 1 bcd", "1 2 abc"))
+		tk.MustQuery("select * from test_order_by order by 1").Check(testkit.Rows("1 2 abc", "2 1 bcd"))
+		tk.MustQuery("select * from test_order_by order by 2").Check(testkit.Rows("2 1 bcd", "1 2 abc"))
 
 		// Order by binary.
-		tk.MustQuery("select c1, c3 from t order by binary c1 desc").Check(testkit.Rows("2 bcd", "1 abc"))
-		tk.MustQuery("select c1, c2 from t order by binary c3").Check(testkit.Rows("1 2", "2 1"))
+		tk.MustQuery("select c1, c3 from test_order_by order by binary c1 desc").Check(testkit.Rows("2 bcd", "1 abc"))
+		tk.MustQuery("select c1, c2 from test_order_by order by binary c3").Check(testkit.Rows("1 2", "2 1"))
 	}
 }
 
@@ -1261,12 +1262,12 @@ func SubTestIssue2612(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec(`drop table if exists t`)
-		tk.MustExec(`create table t (
+		tk.MustExec(`drop table if exists test_issue_2612`)
+		tk.MustExec(`create table test_issue_2612 (
 		create_at datetime NOT NULL DEFAULT '1000-01-01 00:00:00',
 		finish_at datetime NOT NULL DEFAULT '1000-01-01 00:00:00');`)
-		tk.MustExec(`insert into t values ('2016-02-13 15:32:24',  '2016-02-11 17:23:22');`)
-		rs, err := tk.Exec(`select timediff(finish_at, create_at) from t;`)
+		tk.MustExec(`insert into test_issue_2612 values ('2016-02-13 15:32:24',  '2016-02-11 17:23:22');`)
+		rs, err := tk.Exec(`select timediff(finish_at, create_at) from test_issue_2612;`)
 		require.NoError(t, err)
 		req := rs.NewChunk()
 		err = rs.Next(context.Background(), req)
@@ -1282,31 +1283,31 @@ func SubTestIssue345(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec(`drop table if exists t1, t2`)
-		tk.MustExec(`create table t1 (c1 int);`)
-		tk.MustExec(`create table t2 (c2 int);`)
-		tk.MustExec(`insert into t1 values (1);`)
-		tk.MustExec(`insert into t2 values (2);`)
-		tk.MustExec(`update t1, t2 set t1.c1 = 2, t2.c2 = 1;`)
-		tk.MustExec(`update t1, t2 set c1 = 2, c2 = 1;`)
-		tk.MustExec(`update t1 as a, t2 as b set a.c1 = 2, b.c2 = 1;`)
+		tk.MustExec(`drop table if exists test_issue_345_1, test_issue_345_2`)
+		tk.MustExec(`create table test_issue_345_1 (c1 int);`)
+		tk.MustExec(`create table test_issue_345_2 (c2 int);`)
+		tk.MustExec(`insert into test_issue_345_1 values (1);`)
+		tk.MustExec(`insert into test_issue_345_2 values (2);`)
+		tk.MustExec(`update test_issue_345_1, test_issue_345_2 set test_issue_345_1.c1 = 2, test_issue_345_2.c2 = 1;`)
+		tk.MustExec(`update test_issue_345_1, test_issue_345_2 set c1 = 2, c2 = 1;`)
+		tk.MustExec(`update test_issue_345_1 as a, test_issue_345_2 as b set a.c1 = 2, b.c2 = 1;`)
 
-		// Check t1 content
-		r := tk.MustQuery("SELECT * FROM t1;")
+		// Check test_issue_345_1 content
+		r := tk.MustQuery("SELECT * FROM test_issue_345_1;")
 		r.Check(newtestkit.Rows("2"))
-		// Check t2 content
-		r = tk.MustQuery("SELECT * FROM t2;")
+		// Check test_issue_345_2 content
+		r = tk.MustQuery("SELECT * FROM test_issue_345_2;")
 		r.Check(newtestkit.Rows("1"))
 
-		tk.MustExec(`update t1 as a, t2 as t1 set a.c1 = 1, t1.c2 = 2;`)
-		// Check t1 content
-		r = tk.MustQuery("SELECT * FROM t1;")
+		tk.MustExec(`update test_issue_345_1 as a, test_issue_345_2 as test_issue_345_1 set a.c1 = 1, test_issue_345_1.c2 = 2;`)
+		// Check test_issue_345_1 content
+		r = tk.MustQuery("SELECT * FROM test_issue_345_1;")
 		r.Check(newtestkit.Rows("1"))
-		// Check t2 content
-		r = tk.MustQuery("SELECT * FROM t2;")
+		// Check test_issue_345_2 content
+		r = tk.MustQuery("SELECT * FROM test_issue_345_2;")
 		r.Check(newtestkit.Rows("2"))
 
-		_, err := tk.Exec(`update t1 as a, t2 set t1.c1 = 10;`)
+		_, err := tk.Exec(`update test_issue_345_1 as a, test_issue_345_2 set t1.c1 = 10;`)
 		require.Error(t, err)
 	}
 }
@@ -1316,12 +1317,12 @@ func SubTestIssue5055(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec(`drop table if exists t1, t2`)
-		tk.MustExec(`create table t1 (a int);`)
-		tk.MustExec(`create table t2 (a int);`)
-		tk.MustExec(`insert into t1 values(1);`)
-		tk.MustExec(`insert into t2 values(1);`)
-		result := tk.MustQuery("select tbl1.* from (select t1.a, 1 from t1) tbl1 left join t2 tbl2 on tbl1.a = tbl2.a order by tbl1.a desc limit 1;")
+		tk.MustExec(`drop table if exists test_issue_5055_1, test_issue_5055_2`)
+		tk.MustExec(`create table test_issue_5055_1 (a int);`)
+		tk.MustExec(`create table test_issue_5055_2 (a int);`)
+		tk.MustExec(`insert into test_issue_5055_1 values(1);`)
+		tk.MustExec(`insert into test_issue_5055_2 values(1);`)
+		result := tk.MustQuery("select tbl1.* from (select test_issue_5055_1.a, 1 from test_issue_5055_1) tbl1 left join test_issue_5055_2 tbl2 on tbl1.a = tbl2.a order by tbl1.a desc limit 1;")
 		result.Check(newtestkit.Rows("1 1"))
 	}
 }
@@ -1674,17 +1675,17 @@ func SubTestNeighbouringProj(s *testSuiteP1) func(t *testing.T) {
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
 
-		tk.MustExec("drop table if exists t1, t2")
-		tk.MustExec("create table t1(a int, b int)")
-		tk.MustExec("create table t2(a int, b int)")
-		tk.MustExec("insert into t1 value(1, 1), (2, 2)")
-		tk.MustExec("insert into t2 value(1, 1), (2, 2)")
-		tk.MustQuery("select sum(c) from (select t1.a as a, t1.a as c, length(t1.b) from t1  union select a, b, b from t2) t;").Check(testkit.Rows("5"))
+		tk.MustExec("drop table if exists test_neighbouring_proj_1, test_neighbouring_proj_2")
+		tk.MustExec("create table test_neighbouring_proj_1(a int, b int)")
+		tk.MustExec("create table test_neighbouring_proj_2(a int, b int)")
+		tk.MustExec("insert into test_neighbouring_proj_1 value(1, 1), (2, 2)")
+		tk.MustExec("insert into test_neighbouring_proj_2 value(1, 1), (2, 2)")
+		tk.MustQuery("select sum(c) from (select test_neighbouring_proj_1.a as a, test_neighbouring_proj_1.a as c, length(test_neighbouring_proj_1.b) from test_neighbouring_proj_1  union select a, b, b from test_neighbouring_proj_2) t;").Check(testkit.Rows("5"))
 
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t(a bigint, b bigint, c bigint);")
-		tk.MustExec("insert into t values(1, 1, 1), (2, 2, 2), (3, 3, 3);")
-		rs := tk.MustQuery("select cast(count(a) as signed), a as another, a from t group by a order by cast(count(a) as signed), a limit 10;")
+		tk.MustExec("drop table if exists test_neighbouring_proj")
+		tk.MustExec("create table test_neighbouring_proj(a bigint, b bigint, c bigint);")
+		tk.MustExec("insert into test_neighbouring_proj values(1, 1, 1), (2, 2, 2), (3, 3, 3);")
+		rs := tk.MustQuery("select cast(count(a) as signed), a as another, a from test_neighbouring_proj group by a order by cast(count(a) as signed), a limit 10;")
 		rs.Check(newtestkit.Rows("1 1 1", "1 2 2", "1 3 3"))
 	}
 }
@@ -1694,16 +1695,16 @@ func SubTestIn(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec(`drop table if exists t`)
-		tk.MustExec(`create table t (c1 int primary key, c2 int, key c (c2));`)
+		tk.MustExec(`drop table if exists test_in`)
+		tk.MustExec(`create table test_in (c1 int primary key, c2 int, key c (c2));`)
 		for i := 0; i <= 200; i++ {
-			tk.MustExec(fmt.Sprintf("insert t values(%d, %d)", i, i))
+			tk.MustExec(fmt.Sprintf("insert test_in values(%d, %d)", i, i))
 		}
-		queryStr := `select c2 from t where c1 in ('7', '10', '112', '111', '98', '106', '100', '9', '18', '17') order by c2`
+		queryStr := `select c2 from test_in where c1 in ('7', '10', '112', '111', '98', '106', '100', '9', '18', '17') order by c2`
 		r := tk.MustQuery(queryStr)
 		r.Check(newtestkit.Rows("7", "9", "10", "17", "18", "98", "100", "106", "111", "112"))
 
-		queryStr = `select c2 from t where c1 in ('7a')`
+		queryStr = `select c2 from test_in where c1 in ('7a')`
 		tk.MustQuery(queryStr).Check(newtestkit.Rows("7"))
 	}
 }
@@ -1713,55 +1714,55 @@ func SubTestTablePKisHandleScan(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int PRIMARY KEY AUTO_INCREMENT)")
-		tk.MustExec("insert t values (),()")
-		tk.MustExec("insert t values (-100),(0)")
+		tk.MustExec("drop table if exists test_table_pk_is_handle_scan")
+		tk.MustExec("create table test_table_pk_is_handle_scan (a int PRIMARY KEY AUTO_INCREMENT)")
+		tk.MustExec("insert test_table_pk_is_handle_scan values (),()")
+		tk.MustExec("insert test_table_pk_is_handle_scan values (-100),(0)")
 
 		tests := []struct {
 			sql    string
 			result [][]interface{}
 		}{
 			{
-				"select * from t",
+				"select * from test_table_pk_is_handle_scan",
 				testkit.Rows("-100", "1", "2", "3"),
 			},
 			{
-				"select * from t where a = 1",
+				"select * from test_table_pk_is_handle_scan where a = 1",
 				testkit.Rows("1"),
 			},
 			{
-				"select * from t where a != 1",
+				"select * from test_table_pk_is_handle_scan where a != 1",
 				testkit.Rows("-100", "2", "3"),
 			},
 			{
-				"select * from t where a >= '1.1'",
+				"select * from test_table_pk_is_handle_scan where a >= '1.1'",
 				testkit.Rows("2", "3"),
 			},
 			{
-				"select * from t where a < '1.1'",
+				"select * from test_table_pk_is_handle_scan where a < '1.1'",
 				testkit.Rows("-100", "1"),
 			},
 			{
-				"select * from t where a > '-100.1' and a < 2",
+				"select * from test_table_pk_is_handle_scan where a > '-100.1' and a < 2",
 				testkit.Rows("-100", "1"),
 			},
 			{
-				"select * from t where a is null",
+				"select * from test_table_pk_is_handle_scan where a is null",
 				testkit.Rows(),
 			}, {
-				"select * from t where a is true",
+				"select * from test_table_pk_is_handle_scan where a is true",
 				testkit.Rows("-100", "1", "2", "3"),
 			}, {
-				"select * from t where a is false",
+				"select * from test_table_pk_is_handle_scan where a is false",
 				testkit.Rows(),
 			},
 			{
-				"select * from t where a in (1, 2)",
+				"select * from test_table_pk_is_handle_scan where a in (1, 2)",
 				testkit.Rows("1", "2"),
 			},
 			{
-				"select * from t where a between 1 and 2",
+				"select * from test_table_pk_is_handle_scan where a between 1 and 2",
 				testkit.Rows("1", "2"),
 			},
 		}
@@ -1861,18 +1862,18 @@ func SubTestIndexReverseOrder(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int primary key auto_increment, b int, index idx (b))")
-		tk.MustExec("insert t (b) values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)")
-		result := tk.MustQuery("select b from t order by b desc")
+		tk.MustExec("drop table if exists test_index_reverse_order")
+		tk.MustExec("create table test_index_reverse_order (a int primary key auto_increment, b int, index idx (b))")
+		tk.MustExec("insert test_index_reverse_order (b) values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)")
+		result := tk.MustQuery("select b from test_index_reverse_order order by b desc")
 		result.Check(newtestkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1", "0"))
-		result = tk.MustQuery("select b from t where b <3 or (b >=6 and b < 8) order by b desc")
+		result = tk.MustQuery("select b from test_index_reverse_order where b <3 or (b >=6 and b < 8) order by b desc")
 		result.Check(newtestkit.Rows("7", "6", "2", "1", "0"))
 
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int, b int, index idx (b, a))")
-		tk.MustExec("insert t values (0, 2), (1, 2), (2, 2), (0, 1), (1, 1), (2, 1), (0, 0), (1, 0), (2, 0)")
-		result = tk.MustQuery("select b, a from t order by b, a desc")
+		tk.MustExec("drop table if exists test_index_reverse_order")
+		tk.MustExec("create table test_index_reverse_order (a int, b int, index idx (b, a))")
+		tk.MustExec("insert test_index_reverse_order values (0, 2), (1, 2), (2, 2), (0, 1), (1, 1), (2, 1), (0, 0), (1, 0), (2, 0)")
+		result = tk.MustQuery("select b, a from test_index_reverse_order order by b, a desc")
 		result.Check(newtestkit.Rows("0 2", "0 1", "0 0", "1 2", "1 1", "1 0", "2 2", "2 1", "2 0"))
 	}
 }
@@ -1882,12 +1883,12 @@ func SubTestTableReverseOrder(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int primary key auto_increment, b int)")
-		tk.MustExec("insert t (b) values (1), (2), (3), (4), (5), (6), (7), (8), (9)")
-		result := tk.MustQuery("select b from t order by a desc")
+		tk.MustExec("drop table if exists test_table_reverse_order")
+		tk.MustExec("create table test_table_reverse_order (a int primary key auto_increment, b int)")
+		tk.MustExec("insert test_table_reverse_order (b) values (1), (2), (3), (4), (5), (6), (7), (8), (9)")
+		result := tk.MustQuery("select b from test_table_reverse_order order by a desc")
 		result.Check(newtestkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1"))
-		result = tk.MustQuery("select a from t where a <3 or (a >=6 and a < 8) order by a desc")
+		result = tk.MustQuery("select a from test_table_reverse_order where a <3 or (a >=6 and a < 8) order by a desc")
 		result.Check(newtestkit.Rows("7", "6", "2", "1"))
 	}
 }
