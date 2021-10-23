@@ -290,6 +290,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestNeighbouringProj", SubTestNeighbouringProj(s))
 		t.Run("TestIn", SubTestIn(s))
 		t.Run("TestTablePKisHandleScan", SubTestTablePKisHandleScan(s))
+		t.Run("TestIndexReverseOrder", SubTestIndexReverseOrder(s))
 	})
 }
 
@@ -1854,22 +1855,25 @@ func (s *testSuite8) TestIndexScan(c *C) {
 	result.Check(testkit.Rows())
 }
 
-func (s *testSuiteP1) TestIndexReverseOrder(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int primary key auto_increment, b int, index idx (b))")
-	tk.MustExec("insert t (b) values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)")
-	result := tk.MustQuery("select b from t order by b desc")
-	result.Check(testkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1", "0"))
-	result = tk.MustQuery("select b from t where b <3 or (b >=6 and b < 8) order by b desc")
-	result.Check(testkit.Rows("7", "6", "2", "1", "0"))
+func SubTestIndexReverseOrder(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (a int primary key auto_increment, b int, index idx (b))")
+		tk.MustExec("insert t (b) values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)")
+		result := tk.MustQuery("select b from t order by b desc")
+		result.Check(newtestkit.Rows("9", "8", "7", "6", "5", "4", "3", "2", "1", "0"))
+		result = tk.MustQuery("select b from t where b <3 or (b >=6 and b < 8) order by b desc")
+		result.Check(newtestkit.Rows("7", "6", "2", "1", "0"))
 
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int, b int, index idx (b, a))")
-	tk.MustExec("insert t values (0, 2), (1, 2), (2, 2), (0, 1), (1, 1), (2, 1), (0, 0), (1, 0), (2, 0)")
-	result = tk.MustQuery("select b, a from t order by b, a desc")
-	result.Check(testkit.Rows("0 2", "0 1", "0 0", "1 2", "1 1", "1 0", "2 2", "2 1", "2 0"))
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (a int, b int, index idx (b, a))")
+		tk.MustExec("insert t values (0, 2), (1, 2), (2, 2), (0, 1), (1, 1), (2, 1), (0, 0), (1, 0), (2, 0)")
+		result = tk.MustQuery("select b, a from t order by b, a desc")
+		result.Check(newtestkit.Rows("0 2", "0 1", "0 0", "1 2", "1 1", "1 0", "2 2", "2 1", "2 0"))
+	}
 }
 
 func (s *testSuiteP1) TestTableReverseOrder(c *C) {
