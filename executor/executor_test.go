@@ -282,6 +282,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectStringLiteral", SubTestSelectStringLiteral(s))
 		t.Run("TestSelectLimit", SubTestSelectLimit(s))
 		t.Run("TestSelectOrderBy", SubTestSelectOrderBy(s))
+		t.Run("TestOrderBy", SubTestOrderBy(s))
 	})
 }
 
@@ -1187,27 +1188,30 @@ func SubTestSelectOrderBy(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestOrderBy(c *C) {
-	tk := testkit.NewTestKitWithInit(c, s.store)
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (c1 int, c2 int, c3 varchar(20))")
-	tk.MustExec("insert into t values (1, 2, 'abc'), (2, 1, 'bcd')")
+func SubTestOrderBy(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (c1 int, c2 int, c3 varchar(20))")
+		tk.MustExec("insert into t values (1, 2, 'abc'), (2, 1, 'bcd')")
 
-	// Fix issue https://github.com/pingcap/tidb/issues/337
-	tk.MustQuery("select c1 as a, c1 as b from t order by c1").Check(testkit.Rows("1 1", "2 2"))
+		// Fix issue https://github.com/pingcap/tidb/issues/337
+		tk.MustQuery("select c1 as a, c1 as b from t order by c1").Check(testkit.Rows("1 1", "2 2"))
 
-	tk.MustQuery("select c1 as a, t.c1 as a from t order by a desc").Check(testkit.Rows("2 2", "1 1"))
-	tk.MustQuery("select c1 as c2 from t order by c2").Check(testkit.Rows("1", "2"))
-	tk.MustQuery("select sum(c1) from t order by sum(c1)").Check(testkit.Rows("3"))
-	tk.MustQuery("select c1 as c2 from t order by c2 + 1").Check(testkit.Rows("2", "1"))
+		tk.MustQuery("select c1 as a, t.c1 as a from t order by a desc").Check(testkit.Rows("2 2", "1 1"))
+		tk.MustQuery("select c1 as c2 from t order by c2").Check(testkit.Rows("1", "2"))
+		tk.MustQuery("select sum(c1) from t order by sum(c1)").Check(testkit.Rows("3"))
+		tk.MustQuery("select c1 as c2 from t order by c2 + 1").Check(testkit.Rows("2", "1"))
 
-	// Order by position.
-	tk.MustQuery("select * from t order by 1").Check(testkit.Rows("1 2 abc", "2 1 bcd"))
-	tk.MustQuery("select * from t order by 2").Check(testkit.Rows("2 1 bcd", "1 2 abc"))
+		// Order by position.
+		tk.MustQuery("select * from t order by 1").Check(testkit.Rows("1 2 abc", "2 1 bcd"))
+		tk.MustQuery("select * from t order by 2").Check(testkit.Rows("2 1 bcd", "1 2 abc"))
 
-	// Order by binary.
-	tk.MustQuery("select c1, c3 from t order by binary c1 desc").Check(testkit.Rows("2 bcd", "1 abc"))
-	tk.MustQuery("select c1, c2 from t order by binary c3").Check(testkit.Rows("1 2", "2 1"))
+		// Order by binary.
+		tk.MustQuery("select c1, c3 from t order by binary c1 desc").Check(testkit.Rows("2 bcd", "1 abc"))
+		tk.MustQuery("select c1, c2 from t order by binary c3").Check(testkit.Rows("1 2", "2 1"))
+	}
 }
 
 func (s *testSuiteP1) TestSelectErrorRow(c *C) {
