@@ -292,6 +292,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestTablePKisHandleScan", SubTestTablePKisHandleScan(s))
 		t.Run("TestIndexReverseOrder", SubTestIndexReverseOrder(s))
 		t.Run("TestTableReverseOrder", SubTestTableReverseOrder(s))
+		t.Run("TestDefaultNull", SubTestDefaultNull(s))
 	})
 }
 
@@ -1893,20 +1894,23 @@ func SubTestTableReverseOrder(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestDefaultNull(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (a int primary key auto_increment, b int default 1, c int)")
-	tk.MustExec("insert t values ()")
-	tk.MustQuery("select * from t").Check(testkit.Rows("1 1 <nil>"))
-	tk.MustExec("update t set b = NULL where a = 1")
-	tk.MustQuery("select * from t").Check(testkit.Rows("1 <nil> <nil>"))
-	tk.MustExec("update t set c = 1")
-	tk.MustQuery("select * from t ").Check(testkit.Rows("1 <nil> 1"))
-	tk.MustExec("delete from t where a = 1")
-	tk.MustExec("insert t (a) values (1)")
-	tk.MustQuery("select * from t").Check(testkit.Rows("1 1 <nil>"))
+func SubTestDefaultNull(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists test_default_null")
+		tk.MustExec("create table test_default_null (a int primary key auto_increment, b int default 1, c int)")
+		tk.MustExec("insert test_default_null values ()")
+		tk.MustQuery("select * from test_default_null").Check(testkit.Rows("1 1 <nil>"))
+		tk.MustExec("update test_default_null set b = NULL where a = 1")
+		tk.MustQuery("select * from test_default_null").Check(testkit.Rows("1 <nil> <nil>"))
+		tk.MustExec("update test_default_null set c = 1")
+		tk.MustQuery("select * from test_default_null ").Check(testkit.Rows("1 <nil> 1"))
+		tk.MustExec("delete from test_default_null where a = 1")
+		tk.MustExec("insert test_default_null (a) values (1)")
+		tk.MustQuery("select * from test_default_null").Check(testkit.Rows("1 1 <nil>"))
+	}
 }
 
 func (s *testSuiteP1) TestUnsignedPKColumn(c *C) {
