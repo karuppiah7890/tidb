@@ -283,6 +283,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectLimit", SubTestSelectLimit(s))
 		t.Run("TestSelectOrderBy", SubTestSelectOrderBy(s))
 		t.Run("TestOrderBy", SubTestOrderBy(s))
+		t.Run("TestSelectErrorRow", SubTestSelectErrorRow(s))
 	})
 }
 
@@ -1214,33 +1215,36 @@ func SubTestOrderBy(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestSelectErrorRow(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
+func SubTestSelectErrorRow(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
 
-	err := tk.ExecToErr("select row(1, 1) from test")
-	c.Assert(err, NotNil)
+		err := tk.ExecToErr("select row(1, 1) from test")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test group by row(1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test group by row(1, 1);")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test order by row(1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test order by row(1, 1);")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test having row(1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test having row(1, 1);")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select (select 1, 1) from test;")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select (select 1, 1) from test;")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test group by (select 1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test group by (select 1, 1);")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test order by (select 1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test order by (select 1, 1);")
+		require.Error(t, err)
 
-	err = tk.ExecToErr("select * from test having (select 1, 1);")
-	c.Assert(err, NotNil)
+		err = tk.ExecToErr("select * from test having (select 1, 1);")
+		require.Error(t, err)
+	}
 }
 
 // TestIssue2612 is related with https://github.com/pingcap/tidb/issues/2612
