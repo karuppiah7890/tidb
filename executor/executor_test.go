@@ -288,6 +288,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestIssue345", SubTestIssue345(s))
 		t.Run("TestIssue5055", SubTestIssue5055(s))
 		t.Run("TestNeighbouringProj", SubTestNeighbouringProj(s))
+		t.Run("TestIn", SubTestIn(s))
 	})
 }
 
@@ -1685,20 +1686,23 @@ func SubTestNeighbouringProj(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestIn(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec(`drop table if exists t`)
-	tk.MustExec(`create table t (c1 int primary key, c2 int, key c (c2));`)
-	for i := 0; i <= 200; i++ {
-		tk.MustExec(fmt.Sprintf("insert t values(%d, %d)", i, i))
-	}
-	queryStr := `select c2 from t where c1 in ('7', '10', '112', '111', '98', '106', '100', '9', '18', '17') order by c2`
-	r := tk.MustQuery(queryStr)
-	r.Check(testkit.Rows("7", "9", "10", "17", "18", "98", "100", "106", "111", "112"))
+func SubTestIn(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec(`drop table if exists t`)
+		tk.MustExec(`create table t (c1 int primary key, c2 int, key c (c2));`)
+		for i := 0; i <= 200; i++ {
+			tk.MustExec(fmt.Sprintf("insert t values(%d, %d)", i, i))
+		}
+		queryStr := `select c2 from t where c1 in ('7', '10', '112', '111', '98', '106', '100', '9', '18', '17') order by c2`
+		r := tk.MustQuery(queryStr)
+		r.Check(newtestkit.Rows("7", "9", "10", "17", "18", "98", "100", "106", "111", "112"))
 
-	queryStr = `select c2 from t where c1 in ('7a')`
-	tk.MustQuery(queryStr).Check(testkit.Rows("7"))
+		queryStr = `select c2 from t where c1 in ('7a')`
+		tk.MustQuery(queryStr).Check(newtestkit.Rows("7"))
+	}
 }
 
 func (s *testSuiteP1) TestTablePKisHandleScan(c *C) {
