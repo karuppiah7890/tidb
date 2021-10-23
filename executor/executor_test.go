@@ -284,6 +284,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectOrderBy", SubTestSelectOrderBy(s))
 		t.Run("TestOrderBy", SubTestOrderBy(s))
 		t.Run("TestSelectErrorRow", SubTestSelectErrorRow(s))
+		t.Run("TestIssue2612", SubTestIssue2612(s))
 	})
 }
 
@@ -1247,22 +1248,25 @@ func SubTestSelectErrorRow(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-// TestIssue2612 is related with https://github.com/pingcap/tidb/issues/2612
-func (s *testSuiteP1) TestIssue2612(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec(`drop table if exists t`)
-	tk.MustExec(`create table t (
+// SubTestIssue2612 is related with https://github.com/pingcap/tidb/issues/2612
+func SubTestIssue2612(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec(`drop table if exists t`)
+		tk.MustExec(`create table t (
 		create_at datetime NOT NULL DEFAULT '1000-01-01 00:00:00',
 		finish_at datetime NOT NULL DEFAULT '1000-01-01 00:00:00');`)
-	tk.MustExec(`insert into t values ('2016-02-13 15:32:24',  '2016-02-11 17:23:22');`)
-	rs, err := tk.Exec(`select timediff(finish_at, create_at) from t;`)
-	c.Assert(err, IsNil)
-	req := rs.NewChunk()
-	err = rs.Next(context.Background(), req)
-	c.Assert(err, IsNil)
-	c.Assert(req.GetRow(0).GetDuration(0, 0).String(), Equals, "-46:09:02")
-	c.Assert(rs.Close(), IsNil)
+		tk.MustExec(`insert into t values ('2016-02-13 15:32:24',  '2016-02-11 17:23:22');`)
+		rs, err := tk.Exec(`select timediff(finish_at, create_at) from t;`)
+		require.NoError(t, err)
+		req := rs.NewChunk()
+		err = rs.Next(context.Background(), req)
+		require.NoError(t, err)
+		require.Equal(t, "-46:09:02", req.GetRow(0).GetDuration(0, 0).String())
+		require.NoError(t, rs.Close())
+	}
 }
 
 // TestIssue345 is related with https://github.com/pingcap/tidb/issues/345
