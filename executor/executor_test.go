@@ -287,6 +287,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestIssue2612", SubTestIssue2612(s))
 		t.Run("TestIssue345", SubTestIssue345(s))
 		t.Run("TestIssue5055", SubTestIssue5055(s))
+		t.Run("TestNeighbouringProj", SubTestNeighbouringProj(s))
 	})
 }
 
@@ -1663,22 +1664,25 @@ func (s *testSuite2) TestUnionLimit(c *C) {
 	tk.MustQuery("select * from union_limit limit 10")
 }
 
-func (s *testSuiteP1) TestNeighbouringProj(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
+func SubTestNeighbouringProj(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
 
-	tk.MustExec("drop table if exists t1, t2")
-	tk.MustExec("create table t1(a int, b int)")
-	tk.MustExec("create table t2(a int, b int)")
-	tk.MustExec("insert into t1 value(1, 1), (2, 2)")
-	tk.MustExec("insert into t2 value(1, 1), (2, 2)")
-	tk.MustQuery("select sum(c) from (select t1.a as a, t1.a as c, length(t1.b) from t1  union select a, b, b from t2) t;").Check(testkit.Rows("5"))
+		tk.MustExec("drop table if exists t1, t2")
+		tk.MustExec("create table t1(a int, b int)")
+		tk.MustExec("create table t2(a int, b int)")
+		tk.MustExec("insert into t1 value(1, 1), (2, 2)")
+		tk.MustExec("insert into t2 value(1, 1), (2, 2)")
+		tk.MustQuery("select sum(c) from (select t1.a as a, t1.a as c, length(t1.b) from t1  union select a, b, b from t2) t;").Check(testkit.Rows("5"))
 
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a bigint, b bigint, c bigint);")
-	tk.MustExec("insert into t values(1, 1, 1), (2, 2, 2), (3, 3, 3);")
-	rs := tk.MustQuery("select cast(count(a) as signed), a as another, a from t group by a order by cast(count(a) as signed), a limit 10;")
-	rs.Check(testkit.Rows("1 1 1", "1 2 2", "1 3 3"))
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a bigint, b bigint, c bigint);")
+		tk.MustExec("insert into t values(1, 1, 1), (2, 2, 2), (3, 3, 3);")
+		rs := tk.MustQuery("select cast(count(a) as signed), a as another, a from t group by a order by cast(count(a) as signed), a limit 10;")
+		rs.Check(newtestkit.Rows("1 1 1", "1 2 2", "1 3 3"))
+	}
 }
 
 func (s *testSuiteP1) TestIn(c *C) {
