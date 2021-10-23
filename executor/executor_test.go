@@ -274,6 +274,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestBind", SubTestBind(s))
 		t.Run("TestChangePumpAndDrainer", SubTestChangePumpAndDrainer(s))
 		t.Run("TestLoadStats", SubTestLoadStats(s))
+		t.Run("TestPlanReplayer", SubTestPlanReplayer(s))
 	})
 }
 
@@ -344,12 +345,15 @@ func SubTestLoadStats(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestPlanReplayer(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int, b int, index idx_a(a))")
-	tk.MustExec("plan replayer dump explain select * from t where a=10")
+func SubTestPlanReplayer(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int, b int, index idx_a(a))")
+		tk.MustExec("plan replayer dump explain select * from t where a=10")
+	}
 }
 
 func (s *testSuiteP1) TestShow(c *C) {
