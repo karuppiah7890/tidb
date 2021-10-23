@@ -278,6 +278,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestShow", SubTestShow(s))
 		t.Run("TestSelectWithoutFrom", SubTestSelectWithoutFrom(s))
 		t.Run("TestSelectBackslashN", SubTestSelectBackslashN(s))
+		t.Run("TestSelectNull", SubTestSelectNull(s))
 	})
 }
 
@@ -825,39 +826,42 @@ func SubTestSelectBackslashN(s *testSuiteP1) func(t *testing.T) {
 }
 
 // TestSelectNull Issue #4053.
-func (s *testSuiteP1) TestSelectNull(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
+func SubTestSelectNull(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
 
-	sql := `select nUll;`
-	r := tk.MustQuery(sql)
-	r.Check(testkit.Rows("<nil>"))
-	rs, err := tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields := rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `NULL`)
-	c.Assert(rs.Close(), IsNil)
+		sql := `select nUll;`
+		r := tk.MustQuery(sql)
+		r.Check(testkit.Rows("<nil>"))
+		rs, err := tk.Exec(sql)
+		require.NoError(t, err)
+		fields := rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `NULL`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select (null);`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("<nil>"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `NULL`)
-	c.Assert(rs.Close(), IsNil)
+		sql = `select (null);`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("<nil>"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `NULL`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
 
-	sql = `select null+NULL;`
-	r = tk.MustQuery(sql)
-	r.Check(testkit.Rows("<nil>"))
-	rs, err = tk.Exec(sql)
-	c.Check(err, IsNil)
-	fields = rs.Fields()
-	c.Check(err, IsNil)
-	c.Check(len(fields), Equals, 1)
-	c.Check(fields[0].Column.Name.O, Equals, `null+NULL`)
-	c.Assert(rs.Close(), IsNil)
+		sql = `select null+NULL;`
+		r = tk.MustQuery(sql)
+		r.Check(testkit.Rows("<nil>"))
+		rs, err = tk.Exec(sql)
+		require.NoError(t, err)
+		fields = rs.Fields()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(fields))
+		require.Equal(t, `null+NULL`, fields[0].Column.Name.O)
+		require.NoError(t, rs.Close())
+	}
 }
 
 // TestSelectStringLiteral Issue #3686.
