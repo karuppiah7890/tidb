@@ -280,6 +280,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectBackslashN", SubTestSelectBackslashN(s))
 		t.Run("TestSelectNull", SubTestSelectNull(s))
 		t.Run("TestSelectStringLiteral", SubTestSelectStringLiteral(s))
+		t.Run("TestSelectLimit", SubTestSelectLimit(s))
 	})
 }
 
@@ -662,6 +663,17 @@ func (s *baseTestSuite) fillData(tk *testkit.TestKit, table string) {
 	tk.CheckExecResult(1, 0)
 }
 
+func (s *baseTestSuite) newfillData(t *testing.T, tk *newtestkit.TestKit, table string) {
+	tk.MustExec("use test")
+	tk.MustExec(fmt.Sprintf("create table %s(id int not null default 1, name varchar(255), PRIMARY KEY(id));", table))
+
+	// insert data
+	tk.MustExec(fmt.Sprintf("insert INTO %s VALUES (1, \"hello\");", table))
+	tk.CheckExecResult(t, 1, 0)
+	tk.MustExec(fmt.Sprintf("insert into %s values (2, \"hello\");", table))
+	tk.CheckExecResult(t, 1, 0)
+}
+
 type testCase struct {
 	data1       []byte
 	data2       []byte
@@ -1042,33 +1054,36 @@ func SubTestSelectStringLiteral(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuiteP1) TestSelectLimit(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	s.fillData(tk, "select_limit")
+func SubTestSelectLimit(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		s.newfillData(t, tk, "select_limit")
 
-	tk.MustExec("insert INTO select_limit VALUES (3, \"hello\");")
-	tk.CheckExecResult(1, 0)
-	tk.MustExec("insert INTO select_limit VALUES (4, \"hello\");")
-	tk.CheckExecResult(1, 0)
+		tk.MustExec("insert INTO select_limit VALUES (3, \"hello\");")
+		tk.CheckExecResult(t, 1, 0)
+		tk.MustExec("insert INTO select_limit VALUES (4, \"hello\");")
+		tk.CheckExecResult(t, 1, 0)
 
-	r := tk.MustQuery("select * from select_limit limit 1;")
-	r.Check(testkit.Rows("1 hello"))
+		r := tk.MustQuery("select * from select_limit limit 1;")
+		r.Check(testkit.Rows("1 hello"))
 
-	r = tk.MustQuery("select id from (select * from select_limit limit 1) k where id != 1;")
-	r.Check(testkit.Rows())
+		r = tk.MustQuery("select id from (select * from select_limit limit 1) k where id != 1;")
+		r.Check(testkit.Rows())
 
-	r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 0;")
-	r.Check(testkit.Rows("1 hello", "2 hello", "3 hello", "4 hello"))
+		r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 0;")
+		r.Check(testkit.Rows("1 hello", "2 hello", "3 hello", "4 hello"))
 
-	r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 1;")
-	r.Check(testkit.Rows("2 hello", "3 hello", "4 hello"))
+		r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 1;")
+		r.Check(testkit.Rows("2 hello", "3 hello", "4 hello"))
 
-	r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 3;")
-	r.Check(testkit.Rows("4 hello"))
+		r = tk.MustQuery("select * from select_limit limit 18446744073709551615 offset 3;")
+		r.Check(testkit.Rows("4 hello"))
 
-	err := tk.ExecToErr("select * from select_limit limit 18446744073709551616 offset 3;")
-	c.Assert(err, NotNil)
+		err := tk.ExecToErr("select * from select_limit limit 18446744073709551616 offset 3;")
+		require.Error(t, err)
+	}
 }
 
 func (s *testSuiteP1) TestSelectOrderBy(c *C) {
