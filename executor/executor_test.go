@@ -325,6 +325,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestSortLeftJoinWithNullColumnInRightChildPanic", SubTestSortLeftJoinWithNullColumnInRightChildPanic(s))
 		t.Run("TestMaxOneRow", SubTestMaxOneRow(s))
 		t.Run("TestRowID", SubTestRowID(s))
+		t.Run("TestDoSubquery", SubTestDoSubquery(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4824,17 +4825,20 @@ func SubTestRowID(s *testSuite3) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestDoSubquery(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec(`use test`)
-	tk.MustExec(`drop table if exists t`)
-	tk.MustExec(`create table t(a int)`)
-	_, err := tk.Exec(`do 1 in (select * from t)`)
-	c.Assert(err, IsNil, Commentf("err %v", err))
-	tk.MustExec(`insert into t values(1)`)
-	r, err := tk.Exec(`do 1 in (select * from t)`)
-	c.Assert(err, IsNil, Commentf("err %v", err))
-	c.Assert(r, IsNil, Commentf("result of Do not empty"))
+func SubTestDoSubquery(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec(`use test`)
+		tk.MustExec(`drop table if exists test_do_subquery`)
+		tk.MustExec(`create table test_do_subquery(a int)`)
+		_, err := tk.Exec(`do 1 in (select * from test_do_subquery)`)
+		require.NoErrorf(t, err, "err %v", err)
+		tk.MustExec(`insert into test_do_subquery values(1)`)
+		r, err := tk.Exec(`do 1 in (select * from test_do_subquery)`)
+		require.NoErrorf(t, err, "err %v", err)
+		require.Nilf(t, r, "result of Do not empty")
+	}
 }
 
 func (s *testSuite3) TestSubqueryTableAlias(c *C) {
