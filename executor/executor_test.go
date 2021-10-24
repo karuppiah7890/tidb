@@ -321,6 +321,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestYearTypeDeleteIndex", SubTestYearTypeDeleteIndex(s))
 		t.Run("TestForSelectScopeInUnion", SubTestForSelectScopeInUnion(s))
 		t.Run("TestUnsignedDecimalOverflow", SubTestUnsignedDecimalOverflow(s))
+		t.Run("TestIndexJoinTableDualPanic", SubTestIndexJoinTableDualPanic(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4420,15 +4421,19 @@ func SubTestUnsignedDecimalOverflow(s *testSuite3) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestIndexJoinTableDualPanic(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists a")
-	tk.MustExec("create table a (f1 int, f2 varchar(32), primary key (f1))")
-	tk.MustExec("insert into a (f1,f2) values (1,'a'), (2,'b'), (3,'c')")
-	// TODO here: index join cause the data race of txn.
-	tk.MustQuery("select /*+ inl_merge_join(a) */ a.* from a inner join (select 1 as k1,'k2-1' as k2) as k on a.f1=k.k1;").
-		Check(newtestkit.Rows("1 a"))
+func SubTestIndexJoinTableDualPanic(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		defer s.newTearDownTest(t)
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists a")
+		tk.MustExec("create table a (f1 int, f2 varchar(32), primary key (f1))")
+		tk.MustExec("insert into a (f1,f2) values (1,'a'), (2,'b'), (3,'c')")
+		// TODO here: index join cause the data race of txn.
+		tk.MustQuery("select /*+ inl_merge_join(a) */ a.* from a inner join (select 1 as k1,'k2-1' as k2) as k on a.f1=k.k1;").
+			Check(newtestkit.Rows("1 a"))
+	}
 }
 
 func (s *testSuite3) TestSortLeftJoinWithNullColumnInRightChildPanic(c *C) {
