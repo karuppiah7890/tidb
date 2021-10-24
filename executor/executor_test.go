@@ -303,6 +303,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestUpdateClustered", SubTestUpdateClustered(s))
 		t.Run("TestSelectPartition", SubTestSelectPartition(s))
 		t.Run("TestDeletePartition", SubTestDeletePartition(s))
+		t.Run("TestPrepareLoadData", SubTestPrepareLoadData(s))
 	})
 }
 
@@ -6792,9 +6793,12 @@ func (s *testClusterTableSuite) TearDownSuite(c *C) {
 	s.testSuiteWithCliBase.TearDownSuite(c)
 }
 
-func (s *testSuiteP1) TestPrepareLoadData(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustGetErrCode(`prepare stmt from "load data local infile '/tmp/load_data_test.csv' into table test";`, mysql.ErrUnsupportedPs)
+func SubTestPrepareLoadData(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustGetErrCode(`prepare stmt from "load data local infile '/tmp/load_data_test.csv' into table test";`, mysql.ErrUnsupportedPs)
+	}
 }
 
 func (s *testClusterTableSuite) TestSlowQuery(c *C) {
