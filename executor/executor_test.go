@@ -323,6 +323,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestUnsignedDecimalOverflow", SubTestUnsignedDecimalOverflow(s))
 		t.Run("TestIndexJoinTableDualPanic", SubTestIndexJoinTableDualPanic(s))
 		t.Run("TestSortLeftJoinWithNullColumnInRightChildPanic", SubTestSortLeftJoinWithNullColumnInRightChildPanic(s))
+		t.Run("TestMaxOneRow", SubTestMaxOneRow(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4740,23 +4741,26 @@ func (s *testSuite6) TestUpdateJoin(c *C) {
 	tk.MustExec("update t1 tt1 inner join (select count(t1.id) a, t1.id from t1 left join t2 on t1.id = t2.id group by t1.id) x on tt1.id = x.id set tt1.v = tt1.v + x.a")
 }
 
-func (s *testSuite3) TestMaxOneRow(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec(`use test`)
-	tk.MustExec(`drop table if exists t1`)
-	tk.MustExec(`drop table if exists t2`)
-	tk.MustExec(`create table t1(a double, b double);`)
-	tk.MustExec(`create table t2(a double, b double);`)
-	tk.MustExec(`insert into t1 values(1, 1), (2, 2), (3, 3);`)
-	tk.MustExec(`insert into t2 values(0, 0);`)
-	tk.MustExec(`set @@tidb_init_chunk_size=1;`)
-	rs, err := tk.Exec(`select (select t1.a from t1 where t1.a > t2.a) as a from t2;`)
-	c.Assert(err, IsNil)
+func SubTestMaxOneRow(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec(`use test`)
+		tk.MustExec(`drop table if exists test_max_one_row_1`)
+		tk.MustExec(`drop table if exists test_max_one_row_2`)
+		tk.MustExec(`create table test_max_one_row_1(a double, b double);`)
+		tk.MustExec(`create table test_max_one_row_2(a double, b double);`)
+		tk.MustExec(`insert into test_max_one_row_1 values(1, 1), (2, 2), (3, 3);`)
+		tk.MustExec(`insert into test_max_one_row_2 values(0, 0);`)
+		tk.MustExec(`set @@tidb_init_chunk_size=1;`)
+		rs, err := tk.Exec(`select (select test_max_one_row_1.a from test_max_one_row_1 where test_max_one_row_1.a > test_max_one_row_2.a) as a from test_max_one_row_2;`)
+		require.NoError(t, err)
 
-	err = rs.Next(context.TODO(), rs.NewChunk())
-	c.Assert(err.Error(), Equals, "[executor:1242]Subquery returns more than 1 row")
+		err = rs.Next(context.TODO(), rs.NewChunk())
+		require.EqualError(t, err, "[executor:1242]Subquery returns more than 1 row")
 
-	c.Assert(rs.Close(), IsNil)
+		require.NoError(t, rs.Close())
+	}
 }
 
 func (s *testSuiteP2) TestCurrentTimestampValueSelection(c *C) {
