@@ -264,6 +264,7 @@ func (s *globalIndexSuite) SetUpSuite(c *C) {
 }
 
 func TestSuiteP1(t *testing.T) {
+	t.Parallel()
 	// TODO(karuppiah7890): Maybe we can use baseTestSuite directly instead of testSuiteP1 wrapper?
 	// And maybe name baseTestSuite differently? hmm
 	s := &testSuiteP1{&baseTestSuite{}}
@@ -310,6 +311,7 @@ func TestSuiteP1(t *testing.T) {
 }
 
 func TestSuite3(t *testing.T) {
+	t.Parallel()
 	// TODO(karuppiah7890): Maybe we can use baseTestSuite directly instead of testSuite3 wrapper?
 	// And maybe name baseTestSuite differently? hmm
 	s := &testSuite3{&baseTestSuite{}}
@@ -4440,40 +4442,40 @@ func SubTestUnionAutoSignedCast(s *testSuiteP1) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t1,t2")
-		tk.MustExec("create table t1 (id int, i int, b bigint, d double, dd decimal)")
-		tk.MustExec("create table t2 (id int, i int unsigned, b bigint unsigned, d double unsigned, dd decimal unsigned)")
-		tk.MustExec("insert into t1 values(1, -1, -1, -1.1, -1)")
-		tk.MustExec("insert into t2 values(2, 1, 1, 1.1, 1)")
-		tk.MustQuery("select * from t1 union select * from t2 order by id").
+		tk.MustExec("drop table if exists test_union_auto_signed_cast_1,test_union_auto_signed_cast_2")
+		tk.MustExec("create table test_union_auto_signed_cast_1 (id int, i int, b bigint, d double, dd decimal)")
+		tk.MustExec("create table test_union_auto_signed_cast_2 (id int, i int unsigned, b bigint unsigned, d double unsigned, dd decimal unsigned)")
+		tk.MustExec("insert into test_union_auto_signed_cast_1 values(1, -1, -1, -1.1, -1)")
+		tk.MustExec("insert into test_union_auto_signed_cast_2 values(2, 1, 1, 1.1, 1)")
+		tk.MustQuery("select * from test_union_auto_signed_cast_1 union select * from test_union_auto_signed_cast_2 order by id").
 			Check(newtestkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
-		tk.MustQuery("select id, i, b, d, dd from t2 union select id, i, b, d, dd from t1 order by id").
+		tk.MustQuery("select id, i, b, d, dd from test_union_auto_signed_cast_2 union select id, i, b, d, dd from test_union_auto_signed_cast_1 order by id").
 			Check(newtestkit.Rows("1 -1 -1 -1.1 -1", "2 1 1 1.1 1"))
-		tk.MustQuery("select id, i from t2 union select id, cast(i as unsigned int) from t1 order by id").
+		tk.MustQuery("select id, i from test_union_auto_signed_cast_2 union select id, cast(i as unsigned int) from test_union_auto_signed_cast_1 order by id").
 			Check(newtestkit.Rows("1 18446744073709551615", "2 1"))
-		tk.MustQuery("select dd from t2 union all select dd from t2").
+		tk.MustQuery("select dd from test_union_auto_signed_cast_2 union all select dd from test_union_auto_signed_cast_2").
 			Check(newtestkit.Rows("1", "1"))
 
-		tk.MustExec("drop table if exists t3,t4")
-		tk.MustExec("create table t3 (id int, v int)")
-		tk.MustExec("create table t4 (id int, v double unsigned)")
-		tk.MustExec("insert into t3 values (1, -1)")
-		tk.MustExec("insert into t4 values (2, 1)")
-		tk.MustQuery("select id, v from t3 union select id, v from t4 order by id").
+		tk.MustExec("drop table if exists test_union_auto_signed_cast_3,test_union_auto_signed_cast_4")
+		tk.MustExec("create table test_union_auto_signed_cast_3 (id int, v int)")
+		tk.MustExec("create table test_union_auto_signed_cast_4 (id int, v double unsigned)")
+		tk.MustExec("insert into test_union_auto_signed_cast_3 values (1, -1)")
+		tk.MustExec("insert into test_union_auto_signed_cast_4 values (2, 1)")
+		tk.MustQuery("select id, v from test_union_auto_signed_cast_3 union select id, v from test_union_auto_signed_cast_4 order by id").
 			Check(newtestkit.Rows("1 -1", "2 1"))
-		tk.MustQuery("select id, v from t4 union select id, v from t3 order by id").
+		tk.MustQuery("select id, v from test_union_auto_signed_cast_4 union select id, v from test_union_auto_signed_cast_3 order by id").
 			Check(newtestkit.Rows("1 -1", "2 1"))
 
-		tk.MustExec("drop table if exists t5,t6,t7")
-		tk.MustExec("create table t5 (id int, v bigint unsigned)")
-		tk.MustExec("create table t6 (id int, v decimal)")
-		tk.MustExec("create table t7 (id int, v bigint)")
-		tk.MustExec("insert into t5 values (1, 1)")
-		tk.MustExec("insert into t6 values (2, -1)")
-		tk.MustExec("insert into t7 values (3, -1)")
-		tk.MustQuery("select id, v from t5 union select id, v from t6 order by id").
+		tk.MustExec("drop table if exists test_union_auto_signed_cast_5,test_union_auto_signed_cast_6,test_union_auto_signed_cast_7")
+		tk.MustExec("create table test_union_auto_signed_cast_5 (id int, v bigint unsigned)")
+		tk.MustExec("create table test_union_auto_signed_cast_6 (id int, v decimal)")
+		tk.MustExec("create table test_union_auto_signed_cast_7 (id int, v bigint)")
+		tk.MustExec("insert into test_union_auto_signed_cast_5 values (1, 1)")
+		tk.MustExec("insert into test_union_auto_signed_cast_6 values (2, -1)")
+		tk.MustExec("insert into test_union_auto_signed_cast_7 values (3, -1)")
+		tk.MustQuery("select id, v from test_union_auto_signed_cast_5 union select id, v from test_union_auto_signed_cast_6 order by id").
 			Check(newtestkit.Rows("1 1", "2 -1"))
-		tk.MustQuery("select id, v from t5 union select id, v from t7 union select id, v from t6 order by id").
+		tk.MustQuery("select id, v from test_union_auto_signed_cast_5 union select id, v from test_union_auto_signed_cast_7 union select id, v from test_union_auto_signed_cast_6 order by id").
 			Check(newtestkit.Rows("1 1", "2 -1", "3 -1"))
 	}
 }
