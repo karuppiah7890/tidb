@@ -304,6 +304,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestSelectPartition", SubTestSelectPartition(s))
 		t.Run("TestDeletePartition", SubTestDeletePartition(s))
 		t.Run("TestPrepareLoadData", SubTestPrepareLoadData(s))
+		t.Run("TestIssue22941", SubTestIssue22941(s))
 	})
 }
 
@@ -8466,31 +8467,34 @@ func (s *testSuite) TestIssue22201(c *C) {
 	tk.MustQuery("show warnings").Check(testkit.Rows("Warning 1301 Result of weight_string() was larger than max_allowed_packet (67108864) - truncated"))
 }
 
-func (s *testSuiteP1) TestIssue22941(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists m, mp")
-	tk.MustExec(`CREATE TABLE m (
+func SubTestIssue22941(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists m, mp")
+		tk.MustExec(`CREATE TABLE m (
 		mid varchar(50) NOT NULL,
 		ParentId varchar(50) DEFAULT NULL,
 		PRIMARY KEY (mid),
 		KEY ind_bm_parent (ParentId,mid)
 	)`)
-	// mp should have more columns than m
-	tk.MustExec(`CREATE TABLE mp (
+		// mp should have more columns than m
+		tk.MustExec(`CREATE TABLE mp (
 		mpid bigint(20) unsigned NOT NULL DEFAULT '0',
 		mid varchar(50) DEFAULT NULL COMMENT '模块主键',
 		sid int,
 	PRIMARY KEY (mpid)
 	);`)
 
-	tk.MustExec(`insert into mp values("1","1","0");`)
-	tk.MustExec(`insert into m values("0", "0");`)
-	rs := tk.MustQuery(`SELECT ( SELECT COUNT(1) FROM m WHERE ParentId = c.mid ) expand,  bmp.mpid,  bmp.mpid IS NULL,bmp.mpid IS NOT NULL, sid FROM m c LEFT JOIN mp bmp ON c.mid = bmp.mid  WHERE c.ParentId = '0'`)
-	rs.Check(testkit.Rows("1 <nil> 1 0 <nil>"))
+		tk.MustExec(`insert into mp values("1","1","0");`)
+		tk.MustExec(`insert into m values("0", "0");`)
+		rs := tk.MustQuery(`SELECT ( SELECT COUNT(1) FROM m WHERE ParentId = c.mid ) expand,  bmp.mpid,  bmp.mpid IS NULL,bmp.mpid IS NOT NULL, sid FROM m c LEFT JOIN mp bmp ON c.mid = bmp.mid  WHERE c.ParentId = '0'`)
+		rs.Check(testkit.Rows("1 <nil> 1 0 <nil>"))
 
-	rs = tk.MustQuery(`SELECT  bmp.mpid,  bmp.mpid IS NULL,bmp.mpid IS NOT NULL FROM m c LEFT JOIN mp bmp ON c.mid = bmp.mid  WHERE c.ParentId = '0'`)
-	rs.Check(testkit.Rows("<nil> 1 0"))
+		rs = tk.MustQuery(`SELECT  bmp.mpid,  bmp.mpid IS NULL,bmp.mpid IS NOT NULL FROM m c LEFT JOIN mp bmp ON c.mid = bmp.mid  WHERE c.ParentId = '0'`)
+		rs.Check(testkit.Rows("<nil> 1 0"))
+	}
 }
 
 func (s *testSerialSuite) TestTxnWriteThroughputSLI(c *C) {
