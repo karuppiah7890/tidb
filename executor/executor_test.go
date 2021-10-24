@@ -318,6 +318,7 @@ func TestSuite3(t *testing.T) {
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestAdmin", SubTestAdmin(s))
 		t.Run("TestYearTypeDeleteIndex", SubTestYearTypeDeleteIndex(s))
+		t.Run("TestForSelectScopeInUnion", SubTestForSelectScopeInUnion(s))
 	})
 }
 
@@ -4328,35 +4329,40 @@ func SubTestYearTypeDeleteIndex(s *testSuite3) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestForSelectScopeInUnion(c *C) {
-	// A union B for update, the "for update" option belongs to union statement, so
-	// it should works on both A and B.
-	tk1 := testkit.NewTestKit(c, s.store)
-	tk2 := testkit.NewTestKit(c, s.store)
-	tk1.MustExec("use test")
-	tk1.MustExec("drop table if exists t")
-	tk1.MustExec("create table t(a int)")
-	tk1.MustExec("insert into t values (1)")
+func SubTestForSelectScopeInUnion(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		defer s.newTearDownTest(t)
+		t.Parallel()
 
-	tk1.MustExec("begin")
-	// 'For update' would act on the second select.
-	tk1.MustQuery("select 1 as a union select a from t for update")
+		// A union B for update, the "for update" option belongs to union statement, so
+		// it should works on both A and B.
+		tk1 := newtestkit.NewTestKit(t, s.store)
+		tk2 := newtestkit.NewTestKit(t, s.store)
+		tk1.MustExec("use test")
+		tk1.MustExec("drop table if exists t")
+		tk1.MustExec("create table t(a int)")
+		tk1.MustExec("insert into t values (1)")
 
-	tk2.MustExec("use test")
-	tk2.MustExec("update t set a = a + 1")
+		tk1.MustExec("begin")
+		// 'For update' would act on the second select.
+		tk1.MustQuery("select 1 as a union select a from t for update")
 
-	// As tk1 use select 'for update', it should detect conflict and fail.
-	_, err := tk1.Exec("commit")
-	c.Assert(err, NotNil)
+		tk2.MustExec("use test")
+		tk2.MustExec("update t set a = a + 1")
 
-	tk1.MustExec("begin")
-	tk1.MustQuery("select 1 as a union select a from t limit 5 for update")
-	tk1.MustQuery("select 1 as a union select a from t order by a for update")
+		// As tk1 use select 'for update', it should detect conflict and fail.
+		_, err := tk1.Exec("commit")
+		require.Error(t, err)
 
-	tk2.MustExec("update t set a = a + 1")
+		tk1.MustExec("begin")
+		tk1.MustQuery("select 1 as a union select a from t limit 5 for update")
+		tk1.MustQuery("select 1 as a union select a from t order by a for update")
 
-	_, err = tk1.Exec("commit")
-	c.Assert(err, NotNil)
+		tk2.MustExec("update t set a = a + 1")
+
+		_, err = tk1.Exec("commit")
+		require.Error(t, err)
+	}
 }
 
 func (s *testSuite3) TestUnsignedDecimalOverflow(c *C) {
