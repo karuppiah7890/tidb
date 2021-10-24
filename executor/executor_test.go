@@ -341,6 +341,7 @@ func TestSuite(t *testing.T) {
 	s.NewSetUpSuite(t)
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestScanControlSelection", SubTestScanControlSelection(s))
+		t.Run("TestSimpleDAG", SubTestSimpleDAG(s))
 	})
 	s.NewTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -3011,50 +3012,53 @@ func SubTestScanControlSelection(s *testSuite) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite) TestSimpleDAG(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int primary key, b int, c int)")
-	tk.MustExec("insert into t values (1, 1, 1), (2, 1, 1), (3, 1, 2), (4, 2, 3)")
-	tk.MustQuery("select a from t").Check(newtestkit.Rows("1", "2", "3", "4"))
-	tk.MustQuery("select * from t where a = 4").Check(newtestkit.Rows("4 2 3"))
-	tk.MustQuery("select a from t limit 1").Check(newtestkit.Rows("1"))
-	tk.MustQuery("select a from t order by a desc").Check(newtestkit.Rows("4", "3", "2", "1"))
-	tk.MustQuery("select a from t order by a desc limit 1").Check(newtestkit.Rows("4"))
-	tk.MustQuery("select a from t order by b desc limit 1").Check(newtestkit.Rows("4"))
-	tk.MustQuery("select a from t where a < 3").Check(newtestkit.Rows("1", "2"))
-	tk.MustQuery("select a from t where b > 1").Check(newtestkit.Rows("4"))
-	tk.MustQuery("select a from t where b > 1 and a < 3").Check(newtestkit.Rows())
-	tk.MustQuery("select count(*) from t where b > 1 and a < 3").Check(newtestkit.Rows("0"))
-	tk.MustQuery("select count(*) from t").Check(newtestkit.Rows("4"))
-	tk.MustQuery("select count(*), c from t group by c order by c").Check(newtestkit.Rows("2 1", "1 2", "1 3"))
-	tk.MustQuery("select sum(c) as s from t group by b order by s").Check(newtestkit.Rows("3", "4"))
-	tk.MustQuery("select avg(a) as s from t group by b order by s").Check(newtestkit.Rows("2.0000", "4.0000"))
-	tk.MustQuery("select sum(distinct c) from t group by b").Check(newtestkit.Rows("3", "3"))
+func SubTestSimpleDAG(s *testSuite) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int primary key, b int, c int)")
+		tk.MustExec("insert into t values (1, 1, 1), (2, 1, 1), (3, 1, 2), (4, 2, 3)")
+		tk.MustQuery("select a from t").Check(newtestkit.Rows("1", "2", "3", "4"))
+		tk.MustQuery("select * from t where a = 4").Check(newtestkit.Rows("4 2 3"))
+		tk.MustQuery("select a from t limit 1").Check(newtestkit.Rows("1"))
+		tk.MustQuery("select a from t order by a desc").Check(newtestkit.Rows("4", "3", "2", "1"))
+		tk.MustQuery("select a from t order by a desc limit 1").Check(newtestkit.Rows("4"))
+		tk.MustQuery("select a from t order by b desc limit 1").Check(newtestkit.Rows("4"))
+		tk.MustQuery("select a from t where a < 3").Check(newtestkit.Rows("1", "2"))
+		tk.MustQuery("select a from t where b > 1").Check(newtestkit.Rows("4"))
+		tk.MustQuery("select a from t where b > 1 and a < 3").Check(newtestkit.Rows())
+		tk.MustQuery("select count(*) from t where b > 1 and a < 3").Check(newtestkit.Rows("0"))
+		tk.MustQuery("select count(*) from t").Check(newtestkit.Rows("4"))
+		tk.MustQuery("select count(*), c from t group by c order by c").Check(newtestkit.Rows("2 1", "1 2", "1 3"))
+		tk.MustQuery("select sum(c) as s from t group by b order by s").Check(newtestkit.Rows("3", "4"))
+		tk.MustQuery("select avg(a) as s from t group by b order by s").Check(newtestkit.Rows("2.0000", "4.0000"))
+		tk.MustQuery("select sum(distinct c) from t group by b").Check(newtestkit.Rows("3", "3"))
 
-	tk.MustExec("create index i on t(c,b)")
-	tk.MustQuery("select a from t where c = 1").Check(newtestkit.Rows("1", "2"))
-	tk.MustQuery("select a from t where c = 1 and a < 2").Check(newtestkit.Rows("1"))
-	tk.MustQuery("select a from t where c = 1 order by a limit 1").Check(newtestkit.Rows("1"))
-	tk.MustQuery("select count(*) from t where c = 1 ").Check(newtestkit.Rows("2"))
-	tk.MustExec("create index i1 on t(b)")
-	tk.MustQuery("select c from t where b = 2").Check(newtestkit.Rows("3"))
-	tk.MustQuery("select * from t where b = 2").Check(newtestkit.Rows("4 2 3"))
-	tk.MustQuery("select count(*) from t where b = 1").Check(newtestkit.Rows("3"))
-	tk.MustQuery("select * from t where b = 1 and a > 1 limit 1").Check(newtestkit.Rows("2 1 1"))
+		tk.MustExec("create index i on t(c,b)")
+		tk.MustQuery("select a from t where c = 1").Check(newtestkit.Rows("1", "2"))
+		tk.MustQuery("select a from t where c = 1 and a < 2").Check(newtestkit.Rows("1"))
+		tk.MustQuery("select a from t where c = 1 order by a limit 1").Check(newtestkit.Rows("1"))
+		tk.MustQuery("select count(*) from t where c = 1 ").Check(newtestkit.Rows("2"))
+		tk.MustExec("create index i1 on t(b)")
+		tk.MustQuery("select c from t where b = 2").Check(newtestkit.Rows("3"))
+		tk.MustQuery("select * from t where b = 2").Check(newtestkit.Rows("4 2 3"))
+		tk.MustQuery("select count(*) from t where b = 1").Check(newtestkit.Rows("3"))
+		tk.MustQuery("select * from t where b = 1 and a > 1 limit 1").Check(newtestkit.Rows("2 1 1"))
 
-	// Test time push down.
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t (id int, c1 datetime);")
-	tk.MustExec("insert into t values (1, '2015-06-07 12:12:12')")
-	tk.MustQuery("select id from t where c1 = '2015-06-07 12:12:12'").Check(newtestkit.Rows("1"))
+		// Test time push down.
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t (id int, c1 datetime);")
+		tk.MustExec("insert into t values (1, '2015-06-07 12:12:12')")
+		tk.MustQuery("select id from t where c1 = '2015-06-07 12:12:12'").Check(newtestkit.Rows("1"))
 
-	// Test issue 17816
-	tk.MustExec("drop table if exists t0")
-	tk.MustExec("CREATE TABLE t0(c0 INT)")
-	tk.MustExec("INSERT INTO t0 VALUES (100000)")
-	tk.MustQuery("SELECT * FROM t0 WHERE NOT SPACE(t0.c0)").Check(newtestkit.Rows("100000"))
+		// Test issue 17816
+		tk.MustExec("drop table if exists t0")
+		tk.MustExec("CREATE TABLE t0(c0 INT)")
+		tk.MustExec("INSERT INTO t0 VALUES (100000)")
+		tk.MustQuery("SELECT * FROM t0 WHERE NOT SPACE(t0.c0)").Check(newtestkit.Rows("100000"))
+	}
 }
 
 func (s *testSuite) TestTimestampTimeZone(c *C) {
