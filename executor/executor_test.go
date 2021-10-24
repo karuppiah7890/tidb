@@ -317,6 +317,7 @@ func TestSuite3(t *testing.T) {
 	defer s.NewTearDownSuite(t)
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestAdmin", SubTestAdmin(s))
+		t.Run("TestYearTypeDeleteIndex", SubTestYearTypeDeleteIndex(s))
 	})
 }
 
@@ -4313,14 +4314,18 @@ func (s *testSuite) TestCoprocessorStreamingWarning(c *C) {
 	tk.MustQuery("show warnings").Check(testutil.RowsWithSep("|", "Warning|1365|Division by 0"))
 }
 
-func (s *testSuite3) TestYearTypeDeleteIndex(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a YEAR, PRIMARY KEY(a));")
-	tk.MustExec("insert into t set a = '2151';")
-	tk.MustExec("delete from t;")
-	tk.MustExec("admin check table t")
+func SubTestYearTypeDeleteIndex(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		defer s.newTearDownTest(t)
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a YEAR, PRIMARY KEY(a));")
+		tk.MustExec("insert into t set a = '2151';")
+		tk.MustExec("delete from t;")
+		tk.MustExec("admin check table t")
+	}
 }
 
 func (s *testSuite3) TestForSelectScopeInUnion(c *C) {
