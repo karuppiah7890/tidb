@@ -322,6 +322,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestForSelectScopeInUnion", SubTestForSelectScopeInUnion(s))
 		t.Run("TestUnsignedDecimalOverflow", SubTestUnsignedDecimalOverflow(s))
 		t.Run("TestIndexJoinTableDualPanic", SubTestIndexJoinTableDualPanic(s))
+		t.Run("TestSortLeftJoinWithNullColumnInRightChildPanic", SubTestSortLeftJoinWithNullColumnInRightChildPanic(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4434,15 +4435,18 @@ func SubTestIndexJoinTableDualPanic(s *testSuite3) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestSortLeftJoinWithNullColumnInRightChildPanic(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t1, t2")
-	tk.MustExec("create table t1(a int)")
-	tk.MustExec("create table t2(a int)")
-	tk.MustExec("insert into t1(a) select 1;")
-	tk.MustQuery("select b.n from t1 left join (select a as a, null as n from t2) b on b.a = t1.a order by t1.a").
-		Check(newtestkit.Rows("<nil>"))
+func SubTestSortLeftJoinWithNullColumnInRightChildPanic(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists test_sort_left_join_with_null_column_in_right_child_panic_1, test_sort_left_join_with_null_column_in_right_child_panic_2")
+		tk.MustExec("create table test_sort_left_join_with_null_column_in_right_child_panic_1(a int)")
+		tk.MustExec("create table test_sort_left_join_with_null_column_in_right_child_panic_2(a int)")
+		tk.MustExec("insert into test_sort_left_join_with_null_column_in_right_child_panic_1(a) select 1;")
+		tk.MustQuery("select b.n from test_sort_left_join_with_null_column_in_right_child_panic_1 left join (select a as a, null as n from test_sort_left_join_with_null_column_in_right_child_panic_2) b on b.a = test_sort_left_join_with_null_column_in_right_child_panic_1.a order by test_sort_left_join_with_null_column_in_right_child_panic_1.a").
+			Check(newtestkit.Rows("<nil>"))
+	}
 }
 
 func SubTestUnionAutoSignedCast(s *testSuiteP1) func(t *testing.T) {
