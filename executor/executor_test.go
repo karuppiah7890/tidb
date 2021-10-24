@@ -309,6 +309,17 @@ func TestSuiteP1(t *testing.T) {
 	})
 }
 
+func TestSuite3(t *testing.T) {
+	// TODO(karuppiah7890): Maybe we can use baseTestSuite directly instead of testSuite3 wrapper?
+	// And maybe name baseTestSuite differently? hmm
+	s := &testSuite3{&baseTestSuite{}}
+	s.NewSetUpSuite(t)
+	defer s.NewTearDownSuite(t)
+	t.Run("Tests", func(t *testing.T) {
+		t.Run("TestAdmin", SubTestAdmin(s))
+	})
+}
+
 func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()
@@ -459,168 +470,171 @@ func SubTestShow(s *testSuiteP1) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestAdmin(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists admin_test")
-	tk.MustExec("create table admin_test (c1 int, c2 int, c3 int default 1, index (c1))")
-	tk.MustExec("insert admin_test (c1) values (1),(2),(NULL)")
+func SubTestAdmin(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		defer s.newTearDownTest(t)
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists admin_test")
+		tk.MustExec("create table admin_test (c1 int, c2 int, c3 int default 1, index (c1))")
+		tk.MustExec("insert admin_test (c1) values (1),(2),(NULL)")
 
-	ctx := context.Background()
-	// cancel DDL jobs test
-	r, err := tk.Exec("admin cancel ddl jobs 1")
-	c.Assert(err, IsNil, Commentf("err %v", err))
-	req := r.NewChunk()
-	err = r.Next(ctx, req)
-	c.Assert(err, IsNil)
-	row := req.GetRow(0)
-	c.Assert(row.Len(), Equals, 2)
-	c.Assert(row.GetString(0), Equals, "1")
-	c.Assert(row.GetString(1), Matches, "*DDL Job:1 not found")
+		ctx := context.Background()
+		// cancel DDL jobs test
+		r, err := tk.Exec("admin cancel ddl jobs 1")
+		require.NoErrorf(t, err, "err %v", err)
+		req := r.NewChunk()
+		err = r.Next(ctx, req)
+		require.NoError(t, err)
+		row := req.GetRow(0)
+		require.Equal(t, 2, row.Len())
+		require.Equal(t, "1", row.GetString(0))
+		require.Regexp(t, ".*DDL Job:1 not found", row.GetString(1))
 
-	// show ddl test;
-	r, err = tk.Exec("admin show ddl")
-	c.Assert(err, IsNil)
-	req = r.NewChunk()
-	err = r.Next(ctx, req)
-	c.Assert(err, IsNil)
-	row = req.GetRow(0)
-	c.Assert(row.Len(), Equals, 6)
-	txn, err := s.store.Begin()
-	c.Assert(err, IsNil)
-	ddlInfo, err := admin.GetDDLInfo(txn)
-	c.Assert(err, IsNil)
-	c.Assert(row.GetInt64(0), Equals, ddlInfo.SchemaVer)
-	// TODO: Pass this test.
-	// rowOwnerInfos := strings.Split(row.Data[1].GetString(), ",")
-	// ownerInfos := strings.Split(ddlInfo.Owner.String(), ",")
-	// c.Assert(rowOwnerInfos[0], Equals, ownerInfos[0])
-	serverInfo, err := infosync.GetServerInfoByID(ctx, row.GetString(1))
-	c.Assert(err, IsNil)
-	c.Assert(row.GetString(2), Equals, serverInfo.IP+":"+
-		strconv.FormatUint(uint64(serverInfo.Port), 10))
-	c.Assert(row.GetString(3), Equals, "")
-	req = r.NewChunk()
-	err = r.Next(ctx, req)
-	c.Assert(err, IsNil)
-	c.Assert(req.NumRows() == 0, IsTrue)
-	err = txn.Rollback()
-	c.Assert(err, IsNil)
+		// show ddl test;
+		r, err = tk.Exec("admin show ddl")
+		require.NoError(t, err)
+		req = r.NewChunk()
+		err = r.Next(ctx, req)
+		require.NoError(t, err)
+		row = req.GetRow(0)
+		require.Equal(t, 6, row.Len())
+		txn, err := s.store.Begin()
+		require.NoError(t, err)
+		ddlInfo, err := admin.GetDDLInfo(txn)
+		require.NoError(t, err)
+		require.Equal(t, ddlInfo.SchemaVer, row.GetInt64(0))
+		// TODO: Pass this test.
+		// rowOwnerInfos := strings.Split(row.Data[1].GetString(), ",")
+		// ownerInfos := strings.Split(ddlInfo.Owner.String(), ",")
+		// require.Equal(t, ownerInfos[0], rowOwnerInfos[0])
+		serverInfo, err := infosync.GetServerInfoByID(ctx, row.GetString(1))
+		require.NoError(t, err)
+		require.Equal(t, serverInfo.IP+":"+strconv.FormatUint(uint64(serverInfo.Port), 10), row.GetString(2))
+		require.Equal(t, "", row.GetString(3))
+		req = r.NewChunk()
+		err = r.Next(ctx, req)
+		require.NoError(t, err)
+		require.True(t, req.NumRows() == 0)
+		err = txn.Rollback()
+		require.NoError(t, err)
 
-	// show DDL jobs test
-	r, err = tk.Exec("admin show ddl jobs")
-	c.Assert(err, IsNil)
-	req = r.NewChunk()
-	err = r.Next(ctx, req)
-	c.Assert(err, IsNil)
-	row = req.GetRow(0)
-	c.Assert(row.Len(), Equals, 11)
-	txn, err = s.store.Begin()
-	c.Assert(err, IsNil)
-	historyJobs, err := admin.GetHistoryDDLJobs(txn, admin.DefNumHistoryJobs)
-	c.Assert(len(historyJobs), Greater, 1)
-	c.Assert(len(row.GetString(1)), Greater, 0)
-	c.Assert(err, IsNil)
-	c.Assert(row.GetInt64(0), Equals, historyJobs[0].ID)
-	c.Assert(err, IsNil)
+		// show DDL jobs test
+		r, err = tk.Exec("admin show ddl jobs")
+		require.NoError(t, err)
+		req = r.NewChunk()
+		err = r.Next(ctx, req)
+		require.NoError(t, err)
+		row = req.GetRow(0)
+		require.Equal(t, 11, row.Len())
+		txn, err = s.store.Begin()
+		require.NoError(t, err)
+		historyJobs, err := admin.GetHistoryDDLJobs(txn, admin.DefNumHistoryJobs)
+		require.Greater(t, len(historyJobs), 1)
+		require.Greater(t, len(row.GetString(1)), 0)
+		require.NoError(t, err)
+		require.Equal(t, historyJobs[0].ID, row.GetInt64(0))
+		require.NoError(t, err)
 
-	r, err = tk.Exec("admin show ddl jobs 20")
-	c.Assert(err, IsNil)
-	req = r.NewChunk()
-	err = r.Next(ctx, req)
-	c.Assert(err, IsNil)
-	row = req.GetRow(0)
-	c.Assert(row.Len(), Equals, 11)
-	c.Assert(row.GetInt64(0), Equals, historyJobs[0].ID)
-	c.Assert(err, IsNil)
+		r, err = tk.Exec("admin show ddl jobs 20")
+		require.NoError(t, err)
+		req = r.NewChunk()
+		err = r.Next(ctx, req)
+		require.NoError(t, err)
+		row = req.GetRow(0)
+		require.Equal(t, 11, row.Len())
+		require.Equal(t, historyJobs[0].ID, row.GetInt64(0))
+		require.NoError(t, err)
 
-	// show DDL job queries test
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists admin_test2")
-	tk.MustExec("create table admin_test2 (c1 int, c2 int, c3 int default 1, index (c1))")
-	result := tk.MustQuery(`admin show ddl job queries 1, 1, 1`)
-	result.Check(testkit.Rows())
-	result = tk.MustQuery(`admin show ddl job queries 1, 2, 3, 4`)
-	result.Check(testkit.Rows())
-	historyJobs, err = admin.GetHistoryDDLJobs(txn, admin.DefNumHistoryJobs)
-	result = tk.MustQuery(fmt.Sprintf("admin show ddl job queries %d", historyJobs[0].ID))
-	result.Check(testkit.Rows(historyJobs[0].Query))
-	c.Assert(err, IsNil)
+		// show DDL job queries test
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists admin_test2")
+		tk.MustExec("create table admin_test2 (c1 int, c2 int, c3 int default 1, index (c1))")
+		result := tk.MustQuery(`admin show ddl job queries 1, 1, 1`)
+		result.Check(testkit.Rows())
+		result = tk.MustQuery(`admin show ddl job queries 1, 2, 3, 4`)
+		result.Check(testkit.Rows())
+		historyJobs, err = admin.GetHistoryDDLJobs(txn, admin.DefNumHistoryJobs)
+		result = tk.MustQuery(fmt.Sprintf("admin show ddl job queries %d", historyJobs[0].ID))
+		result.Check(testkit.Rows(historyJobs[0].Query))
+		require.NoError(t, err)
 
-	// check table test
-	tk.MustExec("create table admin_test1 (c1 int, c2 int default 1, index (c1))")
-	tk.MustExec("insert admin_test1 (c1) values (21),(22)")
-	r, err = tk.Exec("admin check table admin_test, admin_test1")
-	c.Assert(err, IsNil)
-	c.Assert(r, IsNil)
-	// error table name
-	err = tk.ExecToErr("admin check table admin_test_error")
-	c.Assert(err, NotNil)
-	// different index values
-	sctx := tk.Se.(sessionctx.Context)
-	dom := domain.GetDomain(sctx)
-	is := dom.InfoSchema()
-	c.Assert(is, NotNil)
-	tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("admin_test"))
-	c.Assert(err, IsNil)
-	c.Assert(tb.Indices(), HasLen, 1)
-	_, err = tb.Indices()[0].Create(mock.NewContext(), txn, types.MakeDatums(int64(10)), kv.IntHandle(1), nil)
-	c.Assert(err, IsNil)
-	err = txn.Commit(context.Background())
-	c.Assert(err, IsNil)
-	errAdmin := tk.ExecToErr("admin check table admin_test")
-	c.Assert(errAdmin, NotNil)
+		// check table test
+		tk.MustExec("create table admin_test1 (c1 int, c2 int default 1, index (c1))")
+		tk.MustExec("insert admin_test1 (c1) values (21),(22)")
+		r, err = tk.Exec("admin check table admin_test, admin_test1")
+		require.NoError(t, err)
+		require.Nil(t, r)
+		// error table name
+		err = tk.ExecToErr("admin check table admin_test_error")
+		require.Error(t, err)
+		// different index values
+		sctx := tk.Session().(sessionctx.Context)
+		dom := domain.GetDomain(sctx)
+		is := dom.InfoSchema()
+		require.NotNil(t, is)
+		tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("admin_test"))
+		require.NoError(t, err)
+		require.Len(t, tb.Indices(), 1)
+		_, err = tb.Indices()[0].Create(mock.NewContext(), txn, types.MakeDatums(int64(10)), kv.IntHandle(1), nil)
+		require.NoError(t, err)
+		err = txn.Commit(context.Background())
+		require.NoError(t, err)
+		errAdmin := tk.ExecToErr("admin check table admin_test")
+		require.Error(t, errAdmin)
 
-	if config.CheckTableBeforeDrop {
-		err = tk.ExecToErr("drop table admin_test")
-		c.Assert(err.Error(), Equals, errAdmin.Error())
+		if config.CheckTableBeforeDrop {
+			err = tk.ExecToErr("drop table admin_test")
+			require.Equal(t, errAdmin.Error(), err.Error())
 
-		// Drop inconsistency index.
-		tk.MustExec("alter table admin_test drop index c1")
-		tk.MustExec("admin check table admin_test")
+			// Drop inconsistency index.
+			tk.MustExec("alter table admin_test drop index c1")
+			tk.MustExec("admin check table admin_test")
+		}
+		// checksum table test
+		tk.MustExec("create table checksum_with_index (id int, count int, PRIMARY KEY(id), KEY(count))")
+		tk.MustExec("create table checksum_without_index (id int, count int, PRIMARY KEY(id))")
+		r, err = tk.Exec("admin checksum table checksum_with_index, checksum_without_index")
+		require.NoError(t, err)
+		res := tk.ResultSetToResult(r, "admin checksum table")
+		// Mocktikv returns 1 for every table/index scan, then we will xor the checksums of a table.
+		// For "checksum_with_index", we have two checksums, so the result will be 1^1 = 0.
+		// For "checksum_without_index", we only have one checksum, so the result will be 1.
+		res.Sort().Check(testkit.Rows("test checksum_with_index 0 2 2", "test checksum_without_index 1 1 1"))
+
+		tk.MustExec("drop table if exists t1;")
+		tk.MustExec("CREATE TABLE t1 (c2 BOOL, PRIMARY KEY (c2));")
+		tk.MustExec("INSERT INTO t1 SET c2 = '0';")
+		tk.MustExec("ALTER TABLE t1 ADD COLUMN c3 DATETIME NULL DEFAULT '2668-02-03 17:19:31';")
+		tk.MustExec("ALTER TABLE t1 ADD INDEX idx2 (c3);")
+		tk.MustExec("ALTER TABLE t1 ADD COLUMN c4 bit(10) default 127;")
+		tk.MustExec("ALTER TABLE t1 ADD INDEX idx3 (c4);")
+		tk.MustExec("admin check table t1;")
+
+		// Test admin show ddl jobs table name after table has been droped.
+		tk.MustExec("drop table if exists t1;")
+		re := tk.MustQuery("admin show ddl jobs 1")
+		rows := re.Rows()
+		require.Equal(t, 1, len(rows))
+		require.Equal(t, "t1", rows[0][2])
+
+		// Test for reverse scan get history ddl jobs when ddl history jobs queue has multiple regions.
+		txn, err = s.store.Begin()
+		require.NoError(t, err)
+		historyJobs, err = admin.GetHistoryDDLJobs(txn, 20)
+		require.NoError(t, err)
+
+		// Split region for history ddl job queues.
+		m := meta.NewMeta(txn)
+		startKey := meta.DDLJobHistoryKey(m, 0)
+		endKey := meta.DDLJobHistoryKey(m, historyJobs[0].ID)
+		s.cluster.SplitKeys(startKey, endKey, int(historyJobs[0].ID/5))
+
+		historyJobs2, err := admin.GetHistoryDDLJobs(txn, 20)
+		require.NoError(t, err)
+		require.Equal(t, historyJobs2, historyJobs)
 	}
-	// checksum table test
-	tk.MustExec("create table checksum_with_index (id int, count int, PRIMARY KEY(id), KEY(count))")
-	tk.MustExec("create table checksum_without_index (id int, count int, PRIMARY KEY(id))")
-	r, err = tk.Exec("admin checksum table checksum_with_index, checksum_without_index")
-	c.Assert(err, IsNil)
-	res := tk.ResultSetToResult(r, Commentf("admin checksum table"))
-	// Mocktikv returns 1 for every table/index scan, then we will xor the checksums of a table.
-	// For "checksum_with_index", we have two checksums, so the result will be 1^1 = 0.
-	// For "checksum_without_index", we only have one checksum, so the result will be 1.
-	res.Sort().Check(testkit.Rows("test checksum_with_index 0 2 2", "test checksum_without_index 1 1 1"))
-
-	tk.MustExec("drop table if exists t1;")
-	tk.MustExec("CREATE TABLE t1 (c2 BOOL, PRIMARY KEY (c2));")
-	tk.MustExec("INSERT INTO t1 SET c2 = '0';")
-	tk.MustExec("ALTER TABLE t1 ADD COLUMN c3 DATETIME NULL DEFAULT '2668-02-03 17:19:31';")
-	tk.MustExec("ALTER TABLE t1 ADD INDEX idx2 (c3);")
-	tk.MustExec("ALTER TABLE t1 ADD COLUMN c4 bit(10) default 127;")
-	tk.MustExec("ALTER TABLE t1 ADD INDEX idx3 (c4);")
-	tk.MustExec("admin check table t1;")
-
-	// Test admin show ddl jobs table name after table has been droped.
-	tk.MustExec("drop table if exists t1;")
-	re := tk.MustQuery("admin show ddl jobs 1")
-	rows := re.Rows()
-	c.Assert(len(rows), Equals, 1)
-	c.Assert(rows[0][2], Equals, "t1")
-
-	// Test for reverse scan get history ddl jobs when ddl history jobs queue has multiple regions.
-	txn, err = s.store.Begin()
-	c.Assert(err, IsNil)
-	historyJobs, err = admin.GetHistoryDDLJobs(txn, 20)
-	c.Assert(err, IsNil)
-
-	// Split region for history ddl job queues.
-	m := meta.NewMeta(txn)
-	startKey := meta.DDLJobHistoryKey(m, 0)
-	endKey := meta.DDLJobHistoryKey(m, historyJobs[0].ID)
-	s.cluster.SplitKeys(startKey, endKey, int(historyJobs[0].ID/5))
-
-	historyJobs2, err := admin.GetHistoryDDLJobs(txn, 20)
-	c.Assert(err, IsNil)
-	c.Assert(historyJobs, DeepEquals, historyJobs2)
 }
 
 func (s *testSuiteP2) TestAdminShowDDLJobs(c *C) {
@@ -5015,6 +5029,22 @@ type testSuite3 struct {
 
 func (s *testSuite3) TearDownTest(c *C) {
 	tk := testkit.NewTestKit(c, s.store)
+	tk.MustExec("use test")
+	r := tk.MustQuery("show full tables")
+	for _, tb := range r.Rows() {
+		tableName := tb[0]
+		if tb[1] == "VIEW" {
+			tk.MustExec(fmt.Sprintf("drop view %v", tableName))
+		} else if tb[1] == "SEQUENCE" {
+			tk.MustExec(fmt.Sprintf("drop sequence %v", tableName))
+		} else {
+			tk.MustExec(fmt.Sprintf("drop table %v", tableName))
+		}
+	}
+}
+
+func (s *testSuite3) newTearDownTest(t *testing.T) {
+	tk := newtestkit.NewTestKit(t, s.store)
 	tk.MustExec("use test")
 	r := tk.MustQuery("show full tables")
 	for _, tb := range r.Rows() {
