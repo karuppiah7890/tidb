@@ -324,6 +324,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestIndexJoinTableDualPanic", SubTestIndexJoinTableDualPanic(s))
 		t.Run("TestSortLeftJoinWithNullColumnInRightChildPanic", SubTestSortLeftJoinWithNullColumnInRightChildPanic(s))
 		t.Run("TestMaxOneRow", SubTestMaxOneRow(s))
+		t.Run("TestRowID", SubTestRowID(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4797,27 +4798,30 @@ func (s *testSuiteP2) TestCurrentTimestampValueSelection(c *C) {
 	c.Assert(len(strings.Split(d, ".")[1]), Equals, 3)
 }
 
-func (s *testSuite3) TestRowID(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec(`use test`)
-	tk.MustExec(`drop table if exists t`)
-	tk.Se.GetSessionVars().EnableClusteredIndex = variable.ClusteredIndexDefModeIntOnly
-	tk.MustExec(`create table t(a varchar(10), b varchar(10), c varchar(1), index idx(a, b, c));`)
-	tk.MustExec(`insert into t values('a', 'b', 'c');`)
-	tk.MustExec(`insert into t values('a', 'b', 'c');`)
-	tk.MustQuery(`select b, _tidb_rowid from t use index(idx) where a = 'a';`).Check(newtestkit.Rows(
-		`b 1`,
-		`b 2`,
-	))
-	tk.MustExec(`begin;`)
-	tk.MustExec(`select * from t for update`)
-	tk.MustQuery(`select distinct b from t use index(idx) where a = 'a';`).Check(newtestkit.Rows(`b`))
-	tk.MustExec(`commit;`)
+func SubTestRowID(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec(`use test`)
+		tk.MustExec(`drop table if exists test_row_id`)
+		tk.Session().GetSessionVars().EnableClusteredIndex = variable.ClusteredIndexDefModeIntOnly
+		tk.MustExec(`create table test_row_id(a varchar(10), b varchar(10), c varchar(1), index idx(a, b, c));`)
+		tk.MustExec(`insert into test_row_id values('a', 'b', 'c');`)
+		tk.MustExec(`insert into test_row_id values('a', 'b', 'c');`)
+		tk.MustQuery(`select b, _tidb_rowid from test_row_id use index(idx) where a = 'a';`).Check(newtestkit.Rows(
+			`b 1`,
+			`b 2`,
+		))
+		tk.MustExec(`begin;`)
+		tk.MustExec(`select * from test_row_id for update`)
+		tk.MustQuery(`select distinct b from test_row_id use index(idx) where a = 'a';`).Check(newtestkit.Rows(`b`))
+		tk.MustExec(`commit;`)
 
-	tk.MustExec(`drop table if exists t`)
-	tk.MustExec(`create table t(a varchar(5) primary key)`)
-	tk.MustExec(`insert into t values('a')`)
-	tk.MustQuery("select *, _tidb_rowid from t use index(`primary`) where _tidb_rowid=1").Check(newtestkit.Rows("a 1"))
+		tk.MustExec(`drop table if exists test_row_id`)
+		tk.MustExec(`create table test_row_id(a varchar(5) primary key)`)
+		tk.MustExec(`insert into test_row_id values('a')`)
+		tk.MustQuery("select *, _tidb_rowid from test_row_id use index(`primary`) where _tidb_rowid=1").Check(newtestkit.Rows("a 1"))
+	}
 }
 
 func (s *testSuite3) TestDoSubquery(c *C) {
