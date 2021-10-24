@@ -327,6 +327,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestRowID", SubTestRowID(s))
 		t.Run("TestDoSubquery", SubTestDoSubquery(s))
 		t.Run("TestSubqueryTableAlias", SubTestSubqueryTableAlias(s))
+		t.Run("TestSelectHashPartitionTable", SubTestSelectHashPartitionTable(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4886,18 +4887,21 @@ func (s *testSerialSuite) TestTSOFail(c *C) {
 	c.Assert(failpoint.Disable("github.com/pingcap/tidb/session/mockGetTSFail"), IsNil)
 }
 
-func (s *testSuite3) TestSelectHashPartitionTable(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec(`use test`)
-	tk.MustExec(`drop table if exists th`)
-	tk.MustExec("set @@session.tidb_enable_table_partition = '1';")
-	tk.MustExec(`create table th (a int, b int) partition by hash(a) partitions 3;`)
-	defer tk.MustExec(`drop table if exists th`)
-	tk.MustExec(`insert into th values (0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8);`)
-	tk.MustExec("insert into th values (-1,-1),(-2,-2),(-3,-3),(-4,-4),(-5,-5),(-6,-6),(-7,-7),(-8,-8);")
-	tk.MustQuery("select b from th order by a").Check(newtestkit.Rows("-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5", "6", "7", "8"))
-	tk.MustQuery(" select * from th where a=-2;").Check(newtestkit.Rows("-2 -2"))
-	tk.MustQuery(" select * from th where a=5;").Check(newtestkit.Rows("5 5"))
+func SubTestSelectHashPartitionTable(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec(`use test`)
+		tk.MustExec(`drop table if exists test_select_hash_partition_table`)
+		tk.MustExec("set @@session.tidb_enable_table_partition = '1';")
+		tk.MustExec(`create table test_select_hash_partition_table (a int, b int) partition by hash(a) partitions 3;`)
+		defer tk.MustExec(`drop table if exists test_select_hash_partition_table`)
+		tk.MustExec(`insert into test_select_hash_partition_table values (0,0),(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8);`)
+		tk.MustExec("insert into test_select_hash_partition_table values (-1,-1),(-2,-2),(-3,-3),(-4,-4),(-5,-5),(-6,-6),(-7,-7),(-8,-8);")
+		tk.MustQuery("select b from test_select_hash_partition_table order by a").Check(newtestkit.Rows("-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5", "6", "7", "8"))
+		tk.MustQuery(" select * from test_select_hash_partition_table where a=-2;").Check(newtestkit.Rows("-2 -2"))
+		tk.MustQuery(" select * from test_select_hash_partition_table where a=5;").Check(newtestkit.Rows("5 5"))
+	}
 }
 
 func SubTestSelectPartition(s *testSuiteP1) func(t *testing.T) {
