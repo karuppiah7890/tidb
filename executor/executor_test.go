@@ -320,6 +320,7 @@ func TestSuite3(t *testing.T) {
 		t.Run("TestAdmin", SubTestAdmin(s))
 		t.Run("TestYearTypeDeleteIndex", SubTestYearTypeDeleteIndex(s))
 		t.Run("TestForSelectScopeInUnion", SubTestForSelectScopeInUnion(s))
+		t.Run("TestUnsignedDecimalOverflow", SubTestUnsignedDecimalOverflow(s))
 	})
 	s.newTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -4365,54 +4366,58 @@ func SubTestForSelectScopeInUnion(s *testSuite3) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite3) TestUnsignedDecimalOverflow(c *C) {
-	tests := []struct {
-		input  interface{}
-		hasErr bool
-		err    string
-	}{{
-		-1,
-		true,
-		"Out of range value for column",
-	}, {
-		"-1.1e-1",
-		true,
-		"Out of range value for column",
-	}, {
-		-1.1,
-		true,
-		"Out of range value for column",
-	}, {
-		-0,
-		false,
-		"",
-	},
-	}
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a decimal(10,2) unsigned)")
-	for _, t := range tests {
-		res, err := tk.Exec("insert into t values (?)", t.input)
-		if res != nil {
-			defer res.Close()
+func SubTestUnsignedDecimalOverflow(s *testSuite3) func(t *testing.T) {
+	return func(t *testing.T) {
+		defer s.newTearDownTest(t)
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tests := []struct {
+			input  interface{}
+			hasErr bool
+			err    string
+		}{{
+			-1,
+			true,
+			"Out of range value for column",
+		}, {
+			"-1.1e-1",
+			true,
+			"Out of range value for column",
+		}, {
+			-1.1,
+			true,
+			"Out of range value for column",
+		}, {
+			-0,
+			false,
+			"",
+		},
 		}
-		if t.hasErr {
-			c.Assert(err, NotNil)
-			c.Assert(strings.Contains(err.Error(), t.err), IsTrue)
-		} else {
-			c.Assert(err, IsNil)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a decimal(10,2) unsigned)")
+		for _, test := range tests {
+			res, err := tk.Exec("insert into t values (?)", test.input)
+			if res != nil {
+				defer res.Close()
+			}
+			if test.hasErr {
+				require.Error(t, err)
+				require.True(t, strings.Contains(err.Error(), test.err))
+			} else {
+				require.NoError(t, err)
+			}
+			if res != nil {
+				require.NoError(t, res.Close())
+			}
 		}
-		if res != nil {
-			c.Assert(res.Close(), IsNil)
-		}
-	}
 
-	tk.MustExec("set sql_mode=''")
-	tk.MustExec("delete from t")
-	tk.MustExec("insert into t values (?)", -1)
-	r := tk.MustQuery("select a from t limit 1")
-	r.Check(testkit.Rows("0.00"))
+		tk.MustExec("set sql_mode=''")
+		tk.MustExec("delete from t")
+		tk.MustExec("insert into t values (?)", -1)
+		r := tk.MustQuery("select a from t limit 1")
+		r.Check(testkit.Rows("0.00"))
+	}
 }
 
 func (s *testSuite3) TestIndexJoinTableDualPanic(c *C) {
