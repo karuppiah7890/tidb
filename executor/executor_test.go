@@ -314,12 +314,13 @@ func TestSuite3(t *testing.T) {
 	// And maybe name baseTestSuite differently? hmm
 	s := &testSuite3{&baseTestSuite{}}
 	s.NewSetUpSuite(t)
-	defer s.NewTearDownSuite(t)
 	t.Run("Tests", func(t *testing.T) {
 		t.Run("TestAdmin", SubTestAdmin(s))
 		t.Run("TestYearTypeDeleteIndex", SubTestYearTypeDeleteIndex(s))
 		t.Run("TestForSelectScopeInUnion", SubTestForSelectScopeInUnion(s))
 	})
+	s.newTearDownTest(t)
+	s.NewTearDownSuite(t)
 }
 
 func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
@@ -474,7 +475,6 @@ func SubTestShow(s *testSuiteP1) func(t *testing.T) {
 
 func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer s.newTearDownTest(t)
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
@@ -4317,21 +4317,19 @@ func (s *testSuite) TestCoprocessorStreamingWarning(c *C) {
 
 func SubTestYearTypeDeleteIndex(s *testSuite3) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer s.newTearDownTest(t)
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t(a YEAR, PRIMARY KEY(a));")
-		tk.MustExec("insert into t set a = '2151';")
-		tk.MustExec("delete from t;")
-		tk.MustExec("admin check table t")
+		tk.MustExec("drop table if exists test_year_type_delete_index")
+		tk.MustExec("create table test_year_type_delete_index(a YEAR, PRIMARY KEY(a));")
+		tk.MustExec("insert into test_year_type_delete_index set a = '2151';")
+		tk.MustExec("delete from test_year_type_delete_index;")
+		tk.MustExec("admin check table test_year_type_delete_index")
 	}
 }
 
 func SubTestForSelectScopeInUnion(s *testSuite3) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer s.newTearDownTest(t)
 		t.Parallel()
 
 		// A union B for update, the "for update" option belongs to union statement, so
@@ -4339,26 +4337,26 @@ func SubTestForSelectScopeInUnion(s *testSuite3) func(t *testing.T) {
 		tk1 := newtestkit.NewTestKit(t, s.store)
 		tk2 := newtestkit.NewTestKit(t, s.store)
 		tk1.MustExec("use test")
-		tk1.MustExec("drop table if exists t")
-		tk1.MustExec("create table t(a int)")
-		tk1.MustExec("insert into t values (1)")
+		tk1.MustExec("drop table if exists test_for_select_scope_in_union")
+		tk1.MustExec("create table test_for_select_scope_in_union(a int)")
+		tk1.MustExec("insert into test_for_select_scope_in_union values (1)")
 
 		tk1.MustExec("begin")
 		// 'For update' would act on the second select.
-		tk1.MustQuery("select 1 as a union select a from t for update")
+		tk1.MustQuery("select 1 as a union select a from test_for_select_scope_in_union for update")
 
 		tk2.MustExec("use test")
-		tk2.MustExec("update t set a = a + 1")
+		tk2.MustExec("update test_for_select_scope_in_union set a = a + 1")
 
 		// As tk1 use select 'for update', it should detect conflict and fail.
 		_, err := tk1.Exec("commit")
 		require.Error(t, err)
 
 		tk1.MustExec("begin")
-		tk1.MustQuery("select 1 as a union select a from t limit 5 for update")
-		tk1.MustQuery("select 1 as a union select a from t order by a for update")
+		tk1.MustQuery("select 1 as a union select a from test_for_select_scope_in_union limit 5 for update")
+		tk1.MustQuery("select 1 as a union select a from test_for_select_scope_in_union order by a for update")
 
-		tk2.MustExec("update t set a = a + 1")
+		tk2.MustExec("update test_for_select_scope_in_union set a = a + 1")
 
 		_, err = tk1.Exec("commit")
 		require.Error(t, err)
