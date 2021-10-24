@@ -333,6 +333,19 @@ func TestSuite3(t *testing.T) {
 	s.NewTearDownSuite(t)
 }
 
+func TestSuite(t *testing.T) {
+	t.Parallel()
+	// TODO(karuppiah7890): Maybe we can use baseTestSuite directly instead of testSuite wrapper?
+	// And maybe name baseTestSuite differently? hmm
+	s := &testSuite{&baseTestSuite{}}
+	s.NewSetUpSuite(t)
+	t.Run("Tests", func(t *testing.T) {
+		t.Run("TestScanControlSelection", SubTestScanControlSelection(s))
+	})
+	s.NewTearDownTest(t)
+	s.NewTearDownSuite(t)
+}
+
 func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()
@@ -351,6 +364,16 @@ func SubTestPessimisticSelectForUpdate(s *testSuiteP1) func(t *testing.T) {
 
 func (s *testSuite) TearDownTest(c *C) {
 	tk := testkit.NewTestKit(c, s.store)
+	tk.MustExec("use test")
+	r := tk.MustQuery("show tables")
+	for _, tb := range r.Rows() {
+		tableName := tb[0]
+		tk.MustExec(fmt.Sprintf("drop table %v", tableName))
+	}
+}
+
+func (s *testSuite) NewTearDownTest(t *testing.T) {
+	tk := newtestkit.NewTestKit(t, s.store)
 	tk.MustExec("use test")
 	r := tk.MustQuery("show tables")
 	for _, tb := range r.Rows() {
@@ -2976,13 +2999,16 @@ func (s *testSuite2) TestStaleReadFutureTime(c *C) {
 	c.Assert(tk.Se.GetSessionVars().TxnReadTS.PeakTxnReadTS(), Equals, uint64(0))
 }
 
-func (s *testSuite) TestScanControlSelection(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk.MustExec("drop table if exists t")
-	tk.MustExec("create table t(a int primary key, b int, c int, index idx_b(b))")
-	tk.MustExec("insert into t values (1, 1, 1), (2, 1, 1), (3, 1, 2), (4, 2, 3)")
-	tk.MustQuery("select (select count(1) k from t s where s.b = t1.c) from t t1").Sort().Check(newtestkit.Rows("0", "1", "3", "3"))
+func SubTestScanControlSelection(s *testSuite) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk.MustExec("drop table if exists t")
+		tk.MustExec("create table t(a int primary key, b int, c int, index idx_b(b))")
+		tk.MustExec("insert into t values (1, 1, 1), (2, 1, 1), (3, 1, 2), (4, 2, 3)")
+		tk.MustQuery("select (select count(1) k from t s where s.b = t1.c) from t t1").Sort().Check(newtestkit.Rows("0", "1", "3", "3"))
+	}
 }
 
 func (s *testSuite) TestSimpleDAG(c *C) {
