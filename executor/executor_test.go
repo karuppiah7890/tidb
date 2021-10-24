@@ -305,6 +305,7 @@ func TestSuiteP1(t *testing.T) {
 		t.Run("TestDeletePartition", SubTestDeletePartition(s))
 		t.Run("TestPrepareLoadData", SubTestPrepareLoadData(s))
 		t.Run("TestIssue22941", SubTestIssue22941(s))
+		t.Run("TestIssue28935", SubTestIssue28935(s))
 	})
 }
 
@@ -9338,15 +9339,18 @@ func (s *testSuite) TestGetResultRowsCount(c *C) {
 	}
 }
 
-func (s *testSuiteP1) TestIssue28935(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("set @@tidb_enable_vectorized_expression=true")
-	tk.MustQuery(`select trim(leading from " a "), trim(both from " a "), trim(trailing from " a ")`).Check(testkit.Rows("a  a  a"))
-	tk.MustQuery(`select trim(leading null from " a "), trim(both null from " a "), trim(trailing null from " a ")`).Check(testkit.Rows("<nil> <nil> <nil>"))
-	tk.MustQuery(`select trim(null from " a ")`).Check(testkit.Rows("<nil>"))
+func SubTestIssue28935(s *testSuiteP1) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("set @@tidb_enable_vectorized_expression=true")
+		tk.MustQuery(`select trim(leading from " a "), trim(both from " a "), trim(trailing from " a ")`).Check(testkit.Rows("a  a  a"))
+		tk.MustQuery(`select trim(leading null from " a "), trim(both null from " a "), trim(trailing null from " a ")`).Check(testkit.Rows("<nil> <nil> <nil>"))
+		tk.MustQuery(`select trim(null from " a ")`).Check(testkit.Rows("<nil>"))
 
-	tk.MustExec("set @@tidb_enable_vectorized_expression=false")
-	tk.MustQuery(`select trim(leading from " a "), trim(both from " a "), trim(trailing from " a ")`).Check(testkit.Rows("a  a  a"))
-	tk.MustQuery(`select trim(leading null from " a "), trim(both null from " a "), trim(trailing null from " a ")`).Check(testkit.Rows("<nil> <nil> <nil>"))
-	tk.MustQuery(`select trim(null from " a ")`).Check(testkit.Rows("<nil>"))
+		tk.MustExec("set @@tidb_enable_vectorized_expression=false")
+		tk.MustQuery(`select trim(leading from " a "), trim(both from " a "), trim(trailing from " a ")`).Check(testkit.Rows("a  a  a"))
+		tk.MustQuery(`select trim(leading null from " a "), trim(both null from " a "), trim(trailing null from " a ")`).Check(testkit.Rows("<nil> <nil> <nil>"))
+		tk.MustQuery(`select trim(null from " a ")`).Check(testkit.Rows("<nil>"))
+	}
 }
