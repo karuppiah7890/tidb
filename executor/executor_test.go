@@ -4369,7 +4369,6 @@ func SubTestForSelectScopeInUnion(s *testSuite3) func(t *testing.T) {
 
 func SubTestUnsignedDecimalOverflow(s *testSuite3) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer s.newTearDownTest(t)
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tests := []struct {
@@ -4395,10 +4394,10 @@ func SubTestUnsignedDecimalOverflow(s *testSuite3) func(t *testing.T) {
 		},
 		}
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t(a decimal(10,2) unsigned)")
+		tk.MustExec("drop table if exists test_unsigned_decimal_overflow")
+		tk.MustExec("create table test_unsigned_decimal_overflow(a decimal(10,2) unsigned)")
 		for _, test := range tests {
-			res, err := tk.Exec("insert into t values (?)", test.input)
+			res, err := tk.Exec("insert into test_unsigned_decimal_overflow values (?)", test.input)
 			if res != nil {
 				defer res.Close()
 			}
@@ -4414,24 +4413,23 @@ func SubTestUnsignedDecimalOverflow(s *testSuite3) func(t *testing.T) {
 		}
 
 		tk.MustExec("set sql_mode=''")
-		tk.MustExec("delete from t")
-		tk.MustExec("insert into t values (?)", -1)
-		r := tk.MustQuery("select a from t limit 1")
+		tk.MustExec("delete from test_unsigned_decimal_overflow")
+		tk.MustExec("insert into test_unsigned_decimal_overflow values (?)", -1)
+		r := tk.MustQuery("select a from test_unsigned_decimal_overflow limit 1")
 		r.Check(newtestkit.Rows("0.00"))
 	}
 }
 
 func SubTestIndexJoinTableDualPanic(s *testSuite3) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer s.newTearDownTest(t)
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists a")
-		tk.MustExec("create table a (f1 int, f2 varchar(32), primary key (f1))")
-		tk.MustExec("insert into a (f1,f2) values (1,'a'), (2,'b'), (3,'c')")
+		tk.MustExec("drop table if exists test_index_join_table_dual_panic")
+		tk.MustExec("create table test_index_join_table_dual_panic (f1 int, f2 varchar(32), primary key (f1))")
+		tk.MustExec("insert into test_index_join_table_dual_panic (f1,f2) values (1,'a'), (2,'b'), (3,'c')")
 		// TODO here: index join cause the data race of txn.
-		tk.MustQuery("select /*+ inl_merge_join(a) */ a.* from a inner join (select 1 as k1,'k2-1' as k2) as k on a.f1=k.k1;").
+		tk.MustQuery("select /*+ inl_merge_join(test_index_join_table_dual_panic) */ test_index_join_table_dual_panic.* from test_index_join_table_dual_panic inner join (select 1 as k1,'k2-1' as k2) as k on test_index_join_table_dual_panic.f1=k.k1;").
 			Check(newtestkit.Rows("1 a"))
 	}
 }
