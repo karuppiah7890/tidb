@@ -3089,10 +3089,10 @@ func SubTestTimestampTimeZone(s *testSuite) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (ts timestamp)")
+		tk.MustExec("drop table if exists test_timestamp_timezone")
+		tk.MustExec("create table test_timestamp_timezone (ts timestamp)")
 		tk.MustExec("set time_zone = '+00:00'")
-		tk.MustExec("insert into t values ('2017-04-27 22:40:42')")
+		tk.MustExec("insert into test_timestamp_timezone values ('2017-04-27 22:40:42')")
 		// The timestamp will get different value if time_zone session variable changes.
 		tests := []struct {
 			timezone string
@@ -3103,12 +3103,12 @@ func SubTestTimestampTimeZone(s *testSuite) func(t *testing.T) {
 		}
 		for _, tt := range tests {
 			tk.MustExec(fmt.Sprintf("set time_zone = '%s'", tt.timezone))
-			tk.MustQuery("select * from t").Check(newtestkit.Rows(tt.expect))
+			tk.MustQuery("select * from test_timestamp_timezone").Check(newtestkit.Rows(tt.expect))
 		}
 
 		// For issue https://github.com/pingcap/tidb/issues/3467
-		tk.MustExec("drop table if exists t1")
-		tk.MustExec(`CREATE TABLE t1 (
+		tk.MustExec("drop table if exists test_timestamp_timezone_1")
+		tk.MustExec(`CREATE TABLE test_timestamp_timezone_1 (
  	      id bigint(20) NOT NULL AUTO_INCREMENT,
  	      uid int(11) DEFAULT NULL,
  	      datetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -3117,31 +3117,31 @@ func SubTestTimestampTimeZone(s *testSuite) func(t *testing.T) {
  	      KEY i_datetime (datetime),
  	      KEY i_userid (uid)
  	    );`)
-		tk.MustExec(`INSERT INTO t1 VALUES (123381351,1734,"2014-03-31 08:57:10","127.0.0.1");`)
-		r := tk.MustQuery("select datetime from t1;") // Cover TableReaderExec
+		tk.MustExec(`INSERT INTO test_timestamp_timezone_1 VALUES (123381351,1734,"2014-03-31 08:57:10","127.0.0.1");`)
+		r := tk.MustQuery("select datetime from test_timestamp_timezone_1;") // Cover TableReaderExec
 		r.Check(newtestkit.Rows("2014-03-31 08:57:10"))
-		r = tk.MustQuery("select datetime from t1 where datetime='2014-03-31 08:57:10';")
+		r = tk.MustQuery("select datetime from test_timestamp_timezone_1 where datetime='2014-03-31 08:57:10';")
 		r.Check(newtestkit.Rows("2014-03-31 08:57:10")) // Cover IndexReaderExec
-		r = tk.MustQuery("select * from t1 where datetime='2014-03-31 08:57:10';")
+		r = tk.MustQuery("select * from test_timestamp_timezone_1 where datetime='2014-03-31 08:57:10';")
 		r.Check(newtestkit.Rows("123381351 1734 2014-03-31 08:57:10 127.0.0.1")) // Cover IndexLookupExec
 
 		// For issue https://github.com/pingcap/tidb/issues/3485
 		tk.MustExec("set time_zone = 'Asia/Shanghai'")
-		tk.MustExec("drop table if exists t1")
-		tk.MustExec(`CREATE TABLE t1 (
+		tk.MustExec("drop table if exists test_timestamp_timezone_1")
+		tk.MustExec(`CREATE TABLE test_timestamp_timezone_1 (
 	    id bigint(20) NOT NULL AUTO_INCREMENT,
 	    datetime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	    PRIMARY KEY (id)
 	  );`)
-		tk.MustExec(`INSERT INTO t1 VALUES (123381351,"2014-03-31 08:57:10");`)
-		r = tk.MustQuery(`select * from t1 where datetime="2014-03-31 08:57:10";`)
+		tk.MustExec(`INSERT INTO test_timestamp_timezone_1 VALUES (123381351,"2014-03-31 08:57:10");`)
+		r = tk.MustQuery(`select * from test_timestamp_timezone_1 where datetime="2014-03-31 08:57:10";`)
 		r.Check(newtestkit.Rows("123381351 2014-03-31 08:57:10"))
-		tk.MustExec(`alter table t1 add key i_datetime (datetime);`)
-		r = tk.MustQuery(`select * from t1 where datetime="2014-03-31 08:57:10";`)
+		tk.MustExec(`alter table test_timestamp_timezone_1 add key i_datetime (datetime);`)
+		r = tk.MustQuery(`select * from test_timestamp_timezone_1 where datetime="2014-03-31 08:57:10";`)
 		r.Check(newtestkit.Rows("123381351 2014-03-31 08:57:10"))
-		r = tk.MustQuery(`select * from t1;`)
+		r = tk.MustQuery(`select * from test_timestamp_timezone_1;`)
 		r.Check(newtestkit.Rows("123381351 2014-03-31 08:57:10"))
-		r = tk.MustQuery("select datetime from t1 where datetime='2014-03-31 08:57:10';")
+		r = tk.MustQuery("select datetime from test_timestamp_timezone_1 where datetime='2014-03-31 08:57:10';")
 		r.Check(newtestkit.Rows("2014-03-31 08:57:10"))
 	}
 }
@@ -3151,66 +3151,66 @@ func SubTestTimestampDefaultValueTimeZone(s *testSuite) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
+		tk.MustExec("drop table if exists test_timestamp_default_value_timezone")
 		tk.MustExec("set time_zone = '+08:00'")
-		tk.MustExec(`create table t (a int, b timestamp default "2019-01-17 14:46:14")`)
-		tk.MustExec("insert into t set a=1")
-		r := tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-17 14:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		tk.MustExec(`create table test_timestamp_default_value_timezone (a int, b timestamp default "2019-01-17 14:46:14")`)
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=1")
+		r := tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-17 14:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
 		tk.MustExec("set time_zone = '+00:00'")
-		tk.MustExec("insert into t set a=2")
-		r = tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-17 06:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
-		r = tk.MustQuery(`select a,b from t order by a`)
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=2")
+		r = tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-17 06:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		r = tk.MustQuery(`select a,b from test_timestamp_default_value_timezone order by a`)
 		r.Check(newtestkit.Rows("1 2019-01-17 06:46:14", "2 2019-01-17 06:46:14"))
 		// Test the column's version is greater than ColumnInfoVersion1.
 		sctx := tk.Session().(sessionctx.Context)
 		is := domain.GetDomain(sctx).InfoSchema()
 		require.NotNil(t, is)
-		tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("t"))
+		tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("test_timestamp_default_value_timezone"))
 		require.NoError(t, err)
 		tb.Cols()[1].Version = model.ColumnInfoVersion1 + 1
-		tk.MustExec("insert into t set a=3")
-		r = tk.MustQuery(`select a,b from t order by a`)
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=3")
+		r = tk.MustQuery(`select a,b from test_timestamp_default_value_timezone order by a`)
 		r.Check(newtestkit.Rows("1 2019-01-17 06:46:14", "2 2019-01-17 06:46:14", "3 2019-01-17 06:46:14"))
-		tk.MustExec("delete from t where a=3")
+		tk.MustExec("delete from test_timestamp_default_value_timezone where a=3")
 		// Change time zone back.
 		tk.MustExec("set time_zone = '+08:00'")
-		r = tk.MustQuery(`select a,b from t order by a`)
+		r = tk.MustQuery(`select a,b from test_timestamp_default_value_timezone order by a`)
 		r.Check(newtestkit.Rows("1 2019-01-17 14:46:14", "2 2019-01-17 14:46:14"))
 		tk.MustExec("set time_zone = '-08:00'")
-		r = tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-16 22:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		r = tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '2019-01-16 22:46:14'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
 
 		// test zero default value in multiple time zone.
 		defer tk.MustExec(fmt.Sprintf("set @@sql_mode='%s'", tk.MustQuery("select @@sql_mode").Rows()[0][0]))
 		tk.MustExec("set @@sql_mode='STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION';")
-		tk.MustExec("drop table if exists t")
+		tk.MustExec("drop table if exists test_timestamp_default_value_timezone")
 		tk.MustExec("set time_zone = '+08:00'")
-		tk.MustExec(`create table t (a int, b timestamp default "0000-00-00 00")`)
-		tk.MustExec("insert into t set a=1")
-		r = tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		tk.MustExec(`create table test_timestamp_default_value_timezone (a int, b timestamp default "0000-00-00 00")`)
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=1")
+		r = tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
 		tk.MustExec("set time_zone = '+00:00'")
-		tk.MustExec("insert into t set a=2")
-		r = tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=2")
+		r = tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
 		tk.MustExec("set time_zone = '-08:00'")
-		tk.MustExec("insert into t set a=3")
-		r = tk.MustQuery(`show create table t`)
-		r.Check(newtestkit.Rows("t CREATE TABLE `t` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
-		r = tk.MustQuery(`select a,b from t order by a`)
+		tk.MustExec("insert into test_timestamp_default_value_timezone set a=3")
+		r = tk.MustQuery(`show create table test_timestamp_default_value_timezone`)
+		r.Check(newtestkit.Rows("test_timestamp_default_value_timezone CREATE TABLE `test_timestamp_default_value_timezone` (\n" + "  `a` int(11) DEFAULT NULL,\n" + "  `b` timestamp DEFAULT '0000-00-00 00:00:00'\n" + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"))
+		r = tk.MustQuery(`select a,b from test_timestamp_default_value_timezone order by a`)
 		r.Check(newtestkit.Rows("1 0000-00-00 00:00:00", "2 0000-00-00 00:00:00", "3 0000-00-00 00:00:00"))
 
 		// test add timestamp column default current_timestamp.
-		tk.MustExec(`drop table if exists t`)
+		tk.MustExec(`drop table if exists test_timestamp_default_value_timezone`)
 		tk.MustExec(`set time_zone = 'Asia/Shanghai'`)
-		tk.MustExec(`create table t (a int)`)
-		tk.MustExec(`insert into t set a=1`)
-		tk.MustExec(`alter table t add column b timestamp not null default current_timestamp;`)
-		timeIn8 := tk.MustQuery("select b from t").Rows()[0][0]
+		tk.MustExec(`create table test_timestamp_default_value_timezone (a int)`)
+		tk.MustExec(`insert into test_timestamp_default_value_timezone set a=1`)
+		tk.MustExec(`alter table test_timestamp_default_value_timezone add column b timestamp not null default current_timestamp;`)
+		timeIn8 := tk.MustQuery("select b from test_timestamp_default_value_timezone").Rows()[0][0]
 		tk.MustExec(`set time_zone = '+00:00'`)
-		timeIn0 := tk.MustQuery("select b from t").Rows()[0][0]
+		timeIn0 := tk.MustQuery("select b from test_timestamp_default_value_timezone").Rows()[0][0]
 		require.Truef(t, timeIn8 != timeIn0, "%v == %v", timeIn8, timeIn0)
 		datumTimeIn8, err := expression.GetTimeValue(tk.Session(), timeIn8, mysql.TypeTimestamp, 0)
 		require.NoError(t, err)
@@ -3222,10 +3222,10 @@ func SubTestTimestampDefaultValueTimeZone(s *testSuite) func(t *testing.T) {
 		require.Truef(t, timeIn0 == tIn8To0.String(), "%v != %v", timeIn0, tIn8To0.String())
 
 		// test add index.
-		tk.MustExec(`alter table t add index(b);`)
-		tk.MustExec("admin check table t")
+		tk.MustExec(`alter table test_timestamp_default_value_timezone add index(b);`)
+		tk.MustExec("admin check table test_timestamp_default_value_timezone")
 		tk.MustExec(`set time_zone = '+05:00'`)
-		tk.MustExec("admin check table t")
+		tk.MustExec("admin check table test_timestamp_default_value_timezone")
 	}
 }
 
@@ -3260,17 +3260,17 @@ func SubTestTiDBLastTxnInfo(s *testSuite) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int primary key)")
+		tk.MustExec("drop table if exists test_tidb_last_txn_info")
+		tk.MustExec("create table test_tidb_last_txn_info (a int primary key)")
 		tk.MustQuery("select @@tidb_last_txn_info").Check(newtestkit.Rows(""))
 
-		tk.MustExec("insert into t values (1)")
+		tk.MustExec("insert into test_tidb_last_txn_info values (1)")
 		rows1 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts')").Rows()
 		require.Greater(t, rows1[0][0].(string), "0")
 		require.Less(t, rows1[0][0].(string), rows1[0][1].(string))
 
 		tk.MustExec("begin")
-		tk.MustQuery("select a from t where a = 1").Check(newtestkit.Rows("1"))
+		tk.MustQuery("select a from test_tidb_last_txn_info where a = 1").Check(newtestkit.Rows("1"))
 		rows2 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts'), @@tidb_current_ts").Rows()
 		tk.MustExec("commit")
 		rows3 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts')").Rows()
@@ -3281,7 +3281,7 @@ func SubTestTiDBLastTxnInfo(s *testSuite) func(t *testing.T) {
 		require.Less(t, rows2[0][1], rows2[0][2])
 
 		tk.MustExec("begin")
-		tk.MustExec("update t set a = a + 1 where a = 1")
+		tk.MustExec("update test_tidb_last_txn_info set a = a + 1 where a = 1")
 		rows4 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts'), @@tidb_current_ts").Rows()
 		tk.MustExec("commit")
 		rows5 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts')").Rows()
@@ -3292,14 +3292,14 @@ func SubTestTiDBLastTxnInfo(s *testSuite) func(t *testing.T) {
 		require.Less(t, rows4[0][2], rows5[0][1])
 
 		tk.MustExec("begin")
-		tk.MustExec("update t set a = a + 1 where a = 2")
+		tk.MustExec("update test_tidb_last_txn_info set a = a + 1 where a = 2")
 		tk.MustExec("rollback")
 		rows6 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts')").Rows()
 		require.Equal(t, rows5[0][0], rows6[0][0])
 		require.Equal(t, rows5[0][1], rows6[0][1])
 
 		tk.MustExec("begin optimistic")
-		tk.MustExec("insert into t values (2)")
+		tk.MustExec("insert into test_tidb_last_txn_info values (2)")
 		_, err := tk.Exec("commit")
 		require.Error(t, err)
 		rows7 := tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts'), json_extract(@@tidb_last_txn_info, '$.error')").Rows()
@@ -3387,8 +3387,8 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 		t.Parallel()
 		tk := newtestkit.NewTestKit(t, s.store)
 		tk.MustExec("use test")
-		tk.MustExec("drop table if exists t")
-		tk.MustExec("create table t (a int primary key, v int)")
+		tk.MustExec("drop table if exists test_tidb_last_query_info")
+		tk.MustExec("create table test_tidb_last_query_info (a int primary key, v int)")
 		tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.start_ts')").Check(newtestkit.Rows("0 0"))
 
 		toUint64 := func(str interface{}) uint64 {
@@ -3397,12 +3397,12 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 			return res
 		}
 
-		tk.MustExec("select * from t")
+		tk.MustExec("select * from test_tidb_last_query_info")
 		rows := tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Equal(t, rows[0][1], rows[0][0])
 
-		tk.MustExec("insert into t values (1, 10)")
+		tk.MustExec("insert into test_tidb_last_query_info values (1, 10)")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Equal(t, rows[0][1], rows[0][0])
@@ -3412,21 +3412,21 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 		require.Less(t,  rows[0][0].(string), rows[0][1].(string))
 
 		tk.MustExec("begin pessimistic")
-		tk.MustExec("select * from t")
+		tk.MustExec("select * from test_tidb_last_query_info")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Equal(t, rows[0][1], rows[0][0])
 
 		tk2 := newtestkit.NewTestKit(t, s.store)
 		tk2.MustExec("use test")
-		tk2.MustExec("update t set v = 11 where a = 1")
+		tk2.MustExec("update test_tidb_last_query_info set v = 11 where a = 1")
 
-		tk.MustExec("select * from t")
+		tk.MustExec("select * from test_tidb_last_query_info")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Equal(t, rows[0][1], rows[0][0])
 
-		tk.MustExec("update t set v = 12 where a = 1")
+		tk.MustExec("update test_tidb_last_query_info set v = 12 where a = 1")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]),)
@@ -3435,7 +3435,7 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 
 		tk.MustExec("set transaction isolation level read committed")
 		tk.MustExec("begin pessimistic")
-		tk.MustExec("select * from t")
+		tk.MustExec("select * from test_tidb_last_query_info")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
 		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]),)
@@ -3454,25 +3454,25 @@ func SubTestSelectForUpdate(s *testSuite) func(t *testing.T) {
 		tk2 := newtestkit.NewTestKit(t, s.store)
 		tk2.MustExec("use test")
 
-		tk.MustExec("drop table if exists t, t1")
+		tk.MustExec("drop table if exists test_select_for_update, test_select_for_update_1")
 
 		txn, err := tk.Session().Txn(true)
 		require.True(t, kv.ErrInvalidTxn.Equal(err))
 		require.False(t, txn.Valid())
-		tk.MustExec("create table t (c1 int, c2 int, c3 int)")
-		tk.MustExec("insert t values (11, 2, 3)")
-		tk.MustExec("insert t values (12, 2, 3)")
-		tk.MustExec("insert t values (13, 2, 3)")
+		tk.MustExec("create table test_select_for_update (c1 int, c2 int, c3 int)")
+		tk.MustExec("insert test_select_for_update values (11, 2, 3)")
+		tk.MustExec("insert test_select_for_update values (12, 2, 3)")
+		tk.MustExec("insert test_select_for_update values (13, 2, 3)")
 
-		tk.MustExec("create table t1 (c1 int)")
-		tk.MustExec("insert t1 values (11)")
+		tk.MustExec("create table test_select_for_update_1 (c1 int)")
+		tk.MustExec("insert test_select_for_update_1 values (11)")
 
 		// conflict
 		tk1.MustExec("begin")
-		tk1.MustQuery("select * from t where c1=11 for update")
+		tk1.MustQuery("select * from test_select_for_update where c1=11 for update")
 
 		tk2.MustExec("begin")
-		tk2.MustExec("update t set c2=211 where c1=11")
+		tk2.MustExec("update test_select_for_update set c2=211 where c1=11")
 		tk2.MustExec("commit")
 
 		_, err = tk1.Exec("commit")
@@ -3480,40 +3480,40 @@ func SubTestSelectForUpdate(s *testSuite) func(t *testing.T) {
 
 		// no conflict for subquery.
 		tk1.MustExec("begin")
-		tk1.MustQuery("select * from t where exists(select null from t1 where t1.c1=t.c1) for update")
+		tk1.MustQuery("select * from test_select_for_update where exists(select null from test_select_for_update_1 where test_select_for_update_1.c1=test_select_for_update.c1) for update")
 
 		tk2.MustExec("begin")
-		tk2.MustExec("update t set c2=211 where c1=12")
+		tk2.MustExec("update test_select_for_update set c2=211 where c1=12")
 		tk2.MustExec("commit")
 
 		tk1.MustExec("commit")
 
 		// not conflict
 		tk1.MustExec("begin")
-		tk1.MustQuery("select * from t where c1=11 for update")
+		tk1.MustQuery("select * from test_select_for_update where c1=11 for update")
 
 		tk2.MustExec("begin")
-		tk2.MustExec("update t set c2=22 where c1=12")
+		tk2.MustExec("update test_select_for_update set c2=22 where c1=12")
 		tk2.MustExec("commit")
 
 		tk1.MustExec("commit")
 
 		// not conflict, auto commit
 		tk1.MustExec("set @@autocommit=1;")
-		tk1.MustQuery("select * from t where c1=11 for update")
+		tk1.MustQuery("select * from test_select_for_update where c1=11 for update")
 
 		tk2.MustExec("begin")
-		tk2.MustExec("update t set c2=211 where c1=11")
+		tk2.MustExec("update test_select_for_update set c2=211 where c1=11")
 		tk2.MustExec("commit")
 
 		tk1.MustExec("commit")
 
 		// conflict
 		tk1.MustExec("begin")
-		tk1.MustQuery("select * from (select * from t for update) t join t1 for update")
+		tk1.MustQuery("select * from (select * from test_select_for_update for update) test_select_for_update join test_select_for_update_1 for update")
 
 		tk2.MustExec("begin")
-		tk2.MustExec("update t1 set c1 = 13")
+		tk2.MustExec("update test_select_for_update_1 set c1 = 13")
 		tk2.MustExec("commit")
 
 		_, err = tk1.Exec("commit")
