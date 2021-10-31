@@ -364,6 +364,7 @@ func TestSuite(t *testing.T) {
 		t.Run("TestTiDBCurrentTS", SubTestTiDBCurrentTS(s))
 		t.Run("TestTiDBLastTxnInfo", SubTestTiDBLastTxnInfo(s))
 		t.Run("TestTiDBLastQueryInfo", SubTestTiDBLastQueryInfo(s))
+		t.Run("TestSelectForUpdate", SubTestSelectForUpdate(s))
 	})
 	s.NewTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -3443,79 +3444,81 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite) TestSelectForUpdate(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk1 := testkit.NewTestKit(c, s.store)
-	tk1.MustExec("use test")
-	tk2 := testkit.NewTestKit(c, s.store)
-	tk2.MustExec("use test")
+func SubTestSelectForUpdate(s *testSuite) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk1 := newtestkit.NewTestKit(t, s.store)
+		tk1.MustExec("use test")
+		tk2 := newtestkit.NewTestKit(t, s.store)
+		tk2.MustExec("use test")
 
-	tk.MustExec("drop table if exists t, t1")
+		tk.MustExec("drop table if exists t, t1")
 
-	txn, err := tk.Se.Txn(true)
-	c.Assert(kv.ErrInvalidTxn.Equal(err), IsTrue)
-	c.Assert(txn.Valid(), IsFalse)
-	tk.MustExec("create table t (c1 int, c2 int, c3 int)")
-	tk.MustExec("insert t values (11, 2, 3)")
-	tk.MustExec("insert t values (12, 2, 3)")
-	tk.MustExec("insert t values (13, 2, 3)")
+		txn, err := tk.Session().Txn(true)
+		require.True(t, kv.ErrInvalidTxn.Equal(err))
+		require.False(t, txn.Valid())
+		tk.MustExec("create table t (c1 int, c2 int, c3 int)")
+		tk.MustExec("insert t values (11, 2, 3)")
+		tk.MustExec("insert t values (12, 2, 3)")
+		tk.MustExec("insert t values (13, 2, 3)")
 
-	tk.MustExec("create table t1 (c1 int)")
-	tk.MustExec("insert t1 values (11)")
+		tk.MustExec("create table t1 (c1 int)")
+		tk.MustExec("insert t1 values (11)")
 
-	// conflict
-	tk1.MustExec("begin")
-	tk1.MustQuery("select * from t where c1=11 for update")
+		// conflict
+		tk1.MustExec("begin")
+		tk1.MustQuery("select * from t where c1=11 for update")
 
-	tk2.MustExec("begin")
-	tk2.MustExec("update t set c2=211 where c1=11")
-	tk2.MustExec("commit")
+		tk2.MustExec("begin")
+		tk2.MustExec("update t set c2=211 where c1=11")
+		tk2.MustExec("commit")
 
-	_, err = tk1.Exec("commit")
-	c.Assert(err, NotNil)
+		_, err = tk1.Exec("commit")
+		require.Error(t, err)
 
-	// no conflict for subquery.
-	tk1.MustExec("begin")
-	tk1.MustQuery("select * from t where exists(select null from t1 where t1.c1=t.c1) for update")
+		// no conflict for subquery.
+		tk1.MustExec("begin")
+		tk1.MustQuery("select * from t where exists(select null from t1 where t1.c1=t.c1) for update")
 
-	tk2.MustExec("begin")
-	tk2.MustExec("update t set c2=211 where c1=12")
-	tk2.MustExec("commit")
+		tk2.MustExec("begin")
+		tk2.MustExec("update t set c2=211 where c1=12")
+		tk2.MustExec("commit")
 
-	tk1.MustExec("commit")
+		tk1.MustExec("commit")
 
-	// not conflict
-	tk1.MustExec("begin")
-	tk1.MustQuery("select * from t where c1=11 for update")
+		// not conflict
+		tk1.MustExec("begin")
+		tk1.MustQuery("select * from t where c1=11 for update")
 
-	tk2.MustExec("begin")
-	tk2.MustExec("update t set c2=22 where c1=12")
-	tk2.MustExec("commit")
+		tk2.MustExec("begin")
+		tk2.MustExec("update t set c2=22 where c1=12")
+		tk2.MustExec("commit")
 
-	tk1.MustExec("commit")
+		tk1.MustExec("commit")
 
-	// not conflict, auto commit
-	tk1.MustExec("set @@autocommit=1;")
-	tk1.MustQuery("select * from t where c1=11 for update")
+		// not conflict, auto commit
+		tk1.MustExec("set @@autocommit=1;")
+		tk1.MustQuery("select * from t where c1=11 for update")
 
-	tk2.MustExec("begin")
-	tk2.MustExec("update t set c2=211 where c1=11")
-	tk2.MustExec("commit")
+		tk2.MustExec("begin")
+		tk2.MustExec("update t set c2=211 where c1=11")
+		tk2.MustExec("commit")
 
-	tk1.MustExec("commit")
+		tk1.MustExec("commit")
 
-	// conflict
-	tk1.MustExec("begin")
-	tk1.MustQuery("select * from (select * from t for update) t join t1 for update")
+		// conflict
+		tk1.MustExec("begin")
+		tk1.MustQuery("select * from (select * from t for update) t join t1 for update")
 
-	tk2.MustExec("begin")
-	tk2.MustExec("update t1 set c1 = 13")
-	tk2.MustExec("commit")
+		tk2.MustExec("begin")
+		tk2.MustExec("update t1 set c1 = 13")
+		tk2.MustExec("commit")
 
-	_, err = tk1.Exec("commit")
-	c.Assert(err, NotNil)
-
+		_, err = tk1.Exec("commit")
+		require.Error(t, err)
+	}
 }
 
 func (s *testSuite) TestSelectForUpdateOf(c *C) {
