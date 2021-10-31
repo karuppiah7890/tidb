@@ -360,6 +360,7 @@ func TestSuite(t *testing.T) {
 		t.Run("TestScanControlSelection", SubTestScanControlSelection(s))
 		t.Run("TestSimpleDAG", SubTestSimpleDAG(s))
 		t.Run("TestTimestampTimeZone", SubTestTimestampTimeZone(s))
+		t.Run("TestTimestampDefaultValueTimeZone", SubTestTimestampDefaultValueTimeZone(s))
 	})
 	s.NewTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -3141,8 +3142,10 @@ func SubTestTimestampTimeZone(s *testSuite) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite) TestTimestampDefaultValueTimeZone(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
+func SubTestTimestampDefaultValueTimeZone(s *testSuite) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
 	tk.MustExec("use test")
 	tk.MustExec("drop table if exists t")
 	tk.MustExec("set time_zone = '+08:00'")
@@ -3157,11 +3160,11 @@ func (s *testSuite) TestTimestampDefaultValueTimeZone(c *C) {
 	r = tk.MustQuery(`select a,b from t order by a`)
 	r.Check(newtestkit.Rows("1 2019-01-17 06:46:14", "2 2019-01-17 06:46:14"))
 	// Test the column's version is greater than ColumnInfoVersion1.
-	sctx := tk.Se.(sessionctx.Context)
+	sctx := tk.Session().(sessionctx.Context)
 	is := domain.GetDomain(sctx).InfoSchema()
-	c.Assert(is, NotNil)
+	require.NotNil(t, is)
 	tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("t"))
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	tb.Cols()[1].Version = model.ColumnInfoVersion1 + 1
 	tk.MustExec("insert into t set a=3")
 	r = tk.MustQuery(`select a,b from t order by a`)
@@ -3204,21 +3207,22 @@ func (s *testSuite) TestTimestampDefaultValueTimeZone(c *C) {
 	timeIn8 := tk.MustQuery("select b from t").Rows()[0][0]
 	tk.MustExec(`set time_zone = '+00:00'`)
 	timeIn0 := tk.MustQuery("select b from t").Rows()[0][0]
-	c.Assert(timeIn8 != timeIn0, IsTrue, Commentf("%v == %v", timeIn8, timeIn0))
-	datumTimeIn8, err := expression.GetTimeValue(tk.Se, timeIn8, mysql.TypeTimestamp, 0)
-	c.Assert(err, IsNil)
+	require.Truef(t, timeIn8 != timeIn0, "%v == %v", timeIn8, timeIn0)
+	datumTimeIn8, err := expression.GetTimeValue(tk.Session(), timeIn8, mysql.TypeTimestamp, 0)
+	require.NoError(t, err)
 	tIn8To0 := datumTimeIn8.GetMysqlTime()
 	timeZoneIn8, err := time.LoadLocation("Asia/Shanghai")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	err = tIn8To0.ConvertTimeZone(timeZoneIn8, time.UTC)
-	c.Assert(err, IsNil)
-	c.Assert(timeIn0 == tIn8To0.String(), IsTrue, Commentf("%v != %v", timeIn0, tIn8To0.String()))
+	require.NoError(t, err)
+	require.Truef(t, timeIn0 == tIn8To0.String(), "%v != %v", timeIn0, tIn8To0.String())
 
 	// test add index.
 	tk.MustExec(`alter table t add index(b);`)
 	tk.MustExec("admin check table t")
 	tk.MustExec(`set time_zone = '+05:00'`)
 	tk.MustExec("admin check table t")
+	}
 }
 
 func (s *testSuite) TestTiDBCurrentTS(c *C) {
