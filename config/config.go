@@ -574,7 +574,7 @@ var defaultConf = Config{
 	Host:                         DefHost,
 	AdvertiseAddress:             "",
 	Port:                         DefPort,
-	Socket:                       "/tmp/tidb.sock",
+	Socket:                       "/tmp/tidb-{Port}.sock",
 	Cors:                         "",
 	Store:                        "unistore",
 	Path:                         "/tmp/tidb",
@@ -660,7 +660,7 @@ var defaultConf = Config{
 	},
 	PreparedPlanCache: PreparedPlanCache{
 		Enabled:          false,
-		Capacity:         100,
+		Capacity:         1000,
 		MemoryGuardRatio: 0.1,
 	},
 	OpenTracing: OpenTracing{
@@ -704,7 +704,7 @@ var defaultConf = Config{
 	Security: Security{
 		SpilledFileEncryptionMethod: SpilledFileEncryptionMethodPlaintext,
 		EnableSEM:                   false,
-		AutoTLS:                     true,
+		AutoTLS:                     false,
 		RSAKeySize:                  4096,
 	},
 	DeprecateIntegerDisplayWidth: false,

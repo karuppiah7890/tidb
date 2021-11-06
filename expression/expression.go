@@ -1223,7 +1223,7 @@ func canScalarFuncPushDown(scalarFunc *ScalarFunction, pc PbConverter, storeType
 			if storeType == kv.UnSpecified {
 				storageName = "storage layer"
 			}
-			pc.sc.AppendWarning(errors.New("Scalar function '" + scalarFunc.FuncName.L + "'(signature: " + scalarFunc.Function.PbCode().String() + ", return type: " + scalarFunc.RetType.CompactStr() + ") can not be pushed to " + storageName))
+			pc.sc.AppendWarning(errors.New("Scalar function '" + scalarFunc.FuncName.L + "'(signature: " + scalarFunc.Function.PbCode().String() + ", return type: " + scalarFunc.RetType.CompactStr() + ") is not supported to push down to " + storageName + " now."))
 		}
 		return false
 	}
@@ -1249,14 +1249,14 @@ func canScalarFuncPushDown(scalarFunc *ScalarFunction, pc PbConverter, storeType
 func canExprPushDown(expr Expression, pc PbConverter, storeType kv.StoreType, canEnumPush bool) bool {
 	if storeType == kv.TiFlash {
 		switch expr.GetType().Tp {
-		case mysql.TypeEnum:
-			if !canEnumPush {
-				if pc.sc.InExplainStmt {
-					pc.sc.AppendWarning(errors.New("Expr '" + expr.String() + "' can not be pushed to TiFlash because it contains Enum type"))
-				}
-				return false
+		case mysql.TypeEnum, mysql.TypeBit, mysql.TypeSet, mysql.TypeGeometry, mysql.TypeUnspecified:
+			if expr.GetType().Tp == mysql.TypeEnum && canEnumPush {
+				break
 			}
-		default:
+			if pc.sc.InExplainStmt {
+				pc.sc.AppendWarning(errors.New("Expression about '" + expr.String() + "' can not be pushed to TiFlash because it contains unsupported calculation of type '" + types.TypeStr(expr.GetType().Tp) + "'."))
+			}
+			return false
 		}
 	}
 	switch x := expr.(type) {
@@ -1381,6 +1381,11 @@ func PropagateType(evalType types.EvalType, args ...Expression) {
 			if col, ok := args[0].(*Column); ok {
 				newCol := col.Clone()
 				newCol.(*Column).RetType = col.RetType.Clone()
+				args[0] = newCol
+			}
+			if col, ok := args[0].(*CorrelatedColumn); ok {
+				newCol := col.Clone()
+				newCol.(*CorrelatedColumn).RetType = col.RetType.Clone()
 				args[0] = newCol
 			}
 			args[0].GetType().Flen, args[0].GetType().Decimal = newFlen, newDecimal

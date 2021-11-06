@@ -45,6 +45,7 @@ import (
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
 	"github.com/pingcap/tidb/statistics"
+	"github.com/pingcap/tidb/store/helper"
 	"github.com/pingcap/tidb/table"
 	"github.com/pingcap/tidb/table/tables"
 	"github.com/pingcap/tidb/table/temptable"
@@ -163,8 +164,8 @@ func (b *executorBuilder) build(p plannercore.Plan) Executor {
 		return b.buildLoadStats(v)
 	case *plannercore.IndexAdvise:
 		return b.buildIndexAdvise(v)
-	case *plannercore.PlanReplayerSingle:
-		return b.buildPlanReplayerSingle(v)
+	case *plannercore.PlanReplayer:
+		return b.buildPlanReplayer(v)
 	case *plannercore.PhysicalLimit:
 		return b.buildLimit(v)
 	case *plannercore.Prepare:
@@ -906,13 +907,18 @@ func (b *executorBuilder) buildIndexAdvise(v *plannercore.IndexAdvise) Executor 
 	return e
 }
 
-func (b *executorBuilder) buildPlanReplayerSingle(v *plannercore.PlanReplayerSingle) Executor {
+func (b *executorBuilder) buildPlanReplayer(v *plannercore.PlanReplayer) Executor {
+	if v.Load {
+		e := &PlanReplayerLoadExec{
+			baseExecutor: newBaseExecutor(b.ctx, nil, v.ID()),
+			info:         &PlanReplayerLoadInfo{Path: v.File, Ctx: b.ctx},
+		}
+		return e
+	}
 	e := &PlanReplayerSingleExec{
 		baseExecutor: newBaseExecutor(b.ctx, v.Schema(), v.ID()),
 		ExecStmt:     v.ExecStmt,
 		Analyze:      v.Analyze,
-		Load:         v.Load,
-		File:         v.File,
 	}
 	return e
 }
@@ -1199,15 +1205,6 @@ func (b *executorBuilder) buildHashJoin(v *plannercore.PhysicalHashJoin) Executo
 		}
 	}
 
-	// consider collations
-	leftTypes := make([]*types.FieldType, 0, len(retTypes(leftExec)))
-	for _, tp := range retTypes(leftExec) {
-		leftTypes = append(leftTypes, tp.Clone())
-	}
-	rightTypes := make([]*types.FieldType, 0, len(retTypes(rightExec)))
-	for _, tp := range retTypes(rightExec) {
-		rightTypes = append(rightTypes, tp.Clone())
-	}
 	leftIsBuildSide := true
 
 	e.isNullEQ = v.IsNullEQ
@@ -1250,23 +1247,31 @@ func (b *executorBuilder) buildHashJoin(v *plannercore.PhysicalHashJoin) Executo
 	}
 	executorCountHashJoinExec.Inc()
 
+	// We should use JoinKey to construct the type information using by hashing, instead of using the child's schema directly.
+	// When a hybrid type column is hashed multiple times, we need to distinguish what field types are used.
+	// For example, the condition `enum = int and enum = string`, we should use ETInt to hash the first column,
+	// and use ETString to hash the second column, although they may be the same column.
+	leftExecTypes, rightExecTypes := retTypes(leftExec), retTypes(rightExec)
+	leftTypes, rightTypes := make([]*types.FieldType, 0, len(v.LeftJoinKeys)), make([]*types.FieldType, 0, len(v.RightJoinKeys))
+	for i, col := range v.LeftJoinKeys {
+		leftTypes = append(leftTypes, leftExecTypes[col.Index].Clone())
+		leftTypes[i].Flag = col.RetType.Flag
+	}
+	for i, col := range v.RightJoinKeys {
+		rightTypes = append(rightTypes, rightExecTypes[col.Index].Clone())
+		rightTypes[i].Flag = col.RetType.Flag
+	}
+
+	// consider collations
 	for i := range v.EqualConditions {
 		chs, coll := v.EqualConditions[i].CharsetAndCollation(e.ctx)
-		bt := leftTypes[v.LeftJoinKeys[i].Index]
-		bt.Charset, bt.Collate = chs, coll
-		pt := rightTypes[v.RightJoinKeys[i].Index]
-		pt.Charset, pt.Collate = chs, coll
+		leftTypes[i].Charset, leftTypes[i].Collate = chs, coll
+		rightTypes[i].Charset, rightTypes[i].Collate = chs, coll
 	}
 	if leftIsBuildSide {
 		e.buildTypes, e.probeTypes = leftTypes, rightTypes
 	} else {
 		e.buildTypes, e.probeTypes = rightTypes, leftTypes
-	}
-	for _, key := range e.buildKeys {
-		e.buildTypes[key.Index].Flag = key.RetType.Flag
-	}
-	for _, key := range e.probeKeys {
-		e.probeTypes[key.Index].Flag = key.RetType.Flag
 	}
 	return e
 }
@@ -1601,7 +1606,7 @@ func (b *executorBuilder) buildMemTable(v *plannercore.PhysicalMemTable) Executo
 			strings.ToLower(infoschema.TableClientErrorsSummaryGlobal),
 			strings.ToLower(infoschema.TableClientErrorsSummaryByUser),
 			strings.ToLower(infoschema.TableClientErrorsSummaryByHost),
-			strings.ToLower(infoschema.TableRegionLabel),
+			strings.ToLower(infoschema.TableAttributes),
 			strings.ToLower(infoschema.TablePlacementRules):
 			return &MemTableReaderExec{
 				baseExecutor: newBaseExecutor(b.ctx, v.Schema(), v.ID()),
@@ -2225,6 +2230,22 @@ func (b *executorBuilder) buildAnalyzeSamplingPushdown(task plannercore.AnalyzeC
 		*sampleRate = math.Float64frombits(opts[ast.AnalyzeOptSampleRate])
 		if *sampleRate < 0 {
 			*sampleRate = b.getAdjustedSampleRate(b.ctx, task.TableID.GetStatisticsID(), task.TblInfo)
+			if task.PartitionName != "" {
+				sc.AppendNote(errors.Errorf(
+					"Analyze use auto adjusted sample rate %f for table %s.%s's partition %s.",
+					*sampleRate,
+					task.DBName,
+					task.TableName,
+					task.PartitionName,
+				))
+			} else {
+				sc.AppendNote(errors.Errorf(
+					"Analyze use auto adjusted sample rate %f for table %s.%s.",
+					*sampleRate,
+					task.DBName,
+					task.TableName,
+				))
+			}
 		}
 	}
 	e.analyzePB.ColReq = &tipb.AnalyzeColumnsReq{
@@ -2245,6 +2266,7 @@ func (b *executorBuilder) buildAnalyzeSamplingPushdown(task plannercore.AnalyzeC
 	return &analyzeTask{taskType: colTask, colExec: e, job: job}
 }
 
+// getAdjustedSampleRate calculate the sample rate by the table size. If we cannot get the table size. We use the 0.001 as the default sample rate.
 func (b *executorBuilder) getAdjustedSampleRate(sctx sessionctx.Context, tid int64, tblInfo *model.TableInfo) float64 {
 	statsHandle := domain.GetDomain(sctx).StatsHandle()
 	defaultRate := 0.001
@@ -2257,15 +2279,45 @@ func (b *executorBuilder) getAdjustedSampleRate(sctx sessionctx.Context, tid int
 	} else {
 		statsTbl = statsHandle.GetPartitionStats(tblInfo, tid)
 	}
-	if statsTbl == nil {
+	approxiCount, hasPD := b.getApproximateTableCountFromPD(sctx, tid)
+	// If there's no stats meta and no pd, return the default rate.
+	if statsTbl == nil && !hasPD {
 		return defaultRate
 	}
-	// If the count in stats_meta is still 0, the table is not large, we scan all rows.
+	// If the count in stats_meta is still 0 and there's no information from pd side, we scan all rows.
+	if statsTbl.Count == 0 && !hasPD {
+		return 1
+	}
+	// we have issue https://github.com/pingcap/tidb/issues/29216.
+	// To do a workaround for this issue, we check the approxiCount from the pd side to do a comparison.
+	// If the count from the stats_meta is extremely smaller than the approximate count from the pd,
+	// we think that we meet this issue and use the approximate count to calculate the sample rate.
+	if float64(statsTbl.Count*100) < approxiCount {
+		// Confirmed by TiKV side, the experience error rate of the approximate count is about 20%.
+		// So we increase the number to 150000 to reduce this error rate.
+		return math.Min(1, 150000/approxiCount)
+	}
+	// If we don't go into the above if branch and we still detect the count is zero. Return 1 to prevent the dividing zero.
 	if statsTbl.Count == 0 {
 		return 1
 	}
 	// We are expected to scan about 100000 rows or so.
+	// Since there's tiny error rate around the count from the stats meta, we use 110000 to get a little big result
 	return math.Min(1, 110000/float64(statsTbl.Count))
+}
+
+func (b *executorBuilder) getApproximateTableCountFromPD(sctx sessionctx.Context, tid int64) (float64, bool) {
+	tikvStore, ok := sctx.GetStore().(helper.Storage)
+	if !ok {
+		return 0, false
+	}
+	regionStats := &helper.PDRegionStats{}
+	pdHelper := helper.NewHelper(tikvStore)
+	err := pdHelper.GetPDRegionStats(tid, regionStats)
+	if err != nil {
+		return 0, false
+	}
+	return float64(regionStats.StorageKeys), true
 }
 
 func (b *executorBuilder) buildAnalyzeColumnsPushdown(task plannercore.AnalyzeColumnsTask, opts map[ast.AnalyzeOptionType]uint64, autoAnalyze string, schemaForVirtualColEval *expression.Schema) *analyzeTask {
@@ -2648,6 +2700,21 @@ func (b *executorBuilder) buildIndexLookUpJoin(v *plannercore.PhysicalIndexJoin)
 		outerTypes[col.Index].Flag = col.RetType.Flag
 	}
 
+	// We should use JoinKey to construct the type information using by hashing, instead of using the child's schema directly.
+	// When a hybrid type column is hashed multiple times, we need to distinguish what field types are used.
+	// For example, the condition `enum = int and enum = string`, we should use ETInt to hash the first column,
+	// and use ETString to hash the second column, although they may be the same column.
+	innerHashTypes := make([]*types.FieldType, len(v.InnerHashKeys))
+	outerHashTypes := make([]*types.FieldType, len(v.OuterHashKeys))
+	for i, col := range v.InnerHashKeys {
+		innerHashTypes[i] = innerTypes[col.Index].Clone()
+		innerHashTypes[i].Flag = col.RetType.Flag
+	}
+	for i, col := range v.OuterHashKeys {
+		outerHashTypes[i] = outerTypes[col.Index].Clone()
+		outerHashTypes[i].Flag = col.RetType.Flag
+	}
+
 	var (
 		outerFilter           []expression.Expression
 		leftTypes, rightTypes []*types.FieldType
@@ -2682,12 +2749,14 @@ func (b *executorBuilder) buildIndexLookUpJoin(v *plannercore.PhysicalIndexJoin)
 	e := &IndexLookUpJoin{
 		baseExecutor: newBaseExecutor(b.ctx, v.Schema(), v.ID(), outerExec),
 		outerCtx: outerCtx{
-			rowTypes: outerTypes,
-			filter:   outerFilter,
+			rowTypes:  outerTypes,
+			hashTypes: outerHashTypes,
+			filter:    outerFilter,
 		},
 		innerCtx: innerCtx{
 			readerBuilder: &dataReaderBuilder{Plan: innerPlan, executorBuilder: b},
 			rowTypes:      innerTypes,
+			hashTypes:     innerHashTypes,
 			colLens:       v.IdxColLens,
 			hasPrefixCol:  hasPrefixCol,
 		},

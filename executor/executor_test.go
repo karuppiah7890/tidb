@@ -209,6 +209,11 @@ func (s *baseTestSuite) SetUpSuite(c *C) {
 	}
 	d, err := session.BootstrapSession(s.store)
 	c.Assert(err, IsNil)
+	se, err := session.CreateSession4Test(s.store)
+	c.Assert(err, IsNil)
+	_, err = se.Execute(context.Background(), "set @@global.tidb_enable_alter_placement=1")
+	c.Assert(err, IsNil)
+	se.Close()
 	d.SetStatsUpdating(true)
 	s.domain = d
 	config.UpdateGlobal(func(conf *config.Config) {
@@ -544,7 +549,7 @@ func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 		// cancel DDL jobs test
 		r, err := tk.Exec("admin cancel ddl jobs 1")
 		require.NoErrorf(t, err, "err %v", err)
-		req := r.NewChunk()
+		req := r.NewChunk(nil)
 		err = r.Next(ctx, req)
 		require.NoError(t, err)
 		row := req.GetRow(0)
@@ -555,7 +560,7 @@ func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 		// show ddl test;
 		r, err = tk.Exec("admin show ddl")
 		require.NoError(t, err)
-		req = r.NewChunk()
+		req = r.NewChunk(nil)
 		err = r.Next(ctx, req)
 		require.NoError(t, err)
 		row = req.GetRow(0)
@@ -573,7 +578,7 @@ func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, serverInfo.IP+":"+strconv.FormatUint(uint64(serverInfo.Port), 10), row.GetString(2))
 		require.Equal(t, "", row.GetString(3))
-		req = r.NewChunk()
+		req = r.NewChunk(nil)
 		err = r.Next(ctx, req)
 		require.NoError(t, err)
 		require.True(t, req.NumRows() == 0)
@@ -583,7 +588,7 @@ func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 		// show DDL jobs test
 		r, err = tk.Exec("admin show ddl jobs")
 		require.NoError(t, err)
-		req = r.NewChunk()
+		req = r.NewChunk(nil)
 		err = r.Next(ctx, req)
 		require.NoError(t, err)
 		row = req.GetRow(0)
@@ -599,7 +604,7 @@ func SubTestAdmin(s *testSuite3) func(t *testing.T) {
 
 		r, err = tk.Exec("admin show ddl jobs 20")
 		require.NoError(t, err)
-		req = r.NewChunk()
+		req = r.NewChunk(nil)
 		err = r.Next(ctx, req)
 		require.NoError(t, err)
 		row = req.GetRow(0)
@@ -1357,7 +1362,7 @@ func SubTestIssue2612(s *testSuiteP1) func(t *testing.T) {
 		tk.MustExec(`insert into test_issue_2612 values ('2016-02-13 15:32:24',  '2016-02-11 17:23:22');`)
 		rs, err := tk.Exec(`select timediff(finish_at, create_at) from test_issue_2612;`)
 		require.NoError(t, err)
-		req := rs.NewChunk()
+		req := rs.NewChunk(nil)
 		err = rs.Next(context.Background(), req)
 		require.NoError(t, err)
 		require.Equal(t, "-46:09:02", req.GetRow(0).GetDuration(0, 0).String())
@@ -3909,7 +3914,7 @@ func (s *testSuite) TestBit(c *C) {
 	c.Assert(err, NotNil)
 	r, err := tk.Exec("select * from t where c1 = 2")
 	c.Assert(err, IsNil)
-	req := r.NewChunk()
+	req := r.NewChunk(nil)
 	err = r.Next(context.Background(), req)
 	c.Assert(err, IsNil)
 	c.Assert(types.BinaryLiteral(req.GetRow(0).GetBytes(0)), DeepEquals, types.NewBinaryLiteralFromUint(2, -1))
@@ -4834,7 +4839,7 @@ func SubTestMaxOneRow(s *testSuite3) func(t *testing.T) {
 		rs, err := tk.Exec(`select (select test_max_one_row_1.a from test_max_one_row_1 where test_max_one_row_1.a > test_max_one_row_2.a) as a from test_max_one_row_2;`)
 		require.NoError(t, err)
 
-		err = rs.Next(context.TODO(), rs.NewChunk())
+		err = rs.Next(context.TODO(), rs.NewChunk(nil))
 		require.EqualError(t, err, "[executor:1242]Subquery returns more than 1 row")
 
 		require.NoError(t, rs.Close())
@@ -9640,4 +9645,15 @@ func SubTestIssue28935(s *testSuiteP1) func(t *testing.T) {
 		tk.MustQuery(`select trim(leading null from " a "), trim(both null from " a "), trim(trailing null from " a ")`).Check(newtestkit.Rows("<nil> <nil> <nil>"))
 		tk.MustQuery(`select trim(null from " a ")`).Check(newtestkit.Rows("<nil>"))
 	}
+}
+
+func (s *testSuiteP1) TestIssue29412(c *C) {
+	tk := testkit.NewTestKit(c, s.store)
+	tk.MustExec("use test")
+	tk.MustExec("drop table if exists t29142_1")
+	tk.MustExec("drop table if exists t29142_2")
+	tk.MustExec("create table t29142_1(a int);")
+	tk.MustExec("create table t29142_2(a double);")
+	tk.MustExec("insert into t29142_1 value(20);")
+	tk.MustQuery("select sum(distinct a) as x from t29142_1 having x > some ( select a from t29142_2 where x in (a));").Check(nil)
 }
