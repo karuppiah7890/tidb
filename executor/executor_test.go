@@ -365,6 +365,7 @@ func TestSuite(t *testing.T) {
 		t.Run("TestTiDBLastTxnInfo", SubTestTiDBLastTxnInfo(s))
 		t.Run("TestTiDBLastQueryInfo", SubTestTiDBLastQueryInfo(s))
 		t.Run("TestSelectForUpdate", SubTestSelectForUpdate(s))
+		t.Run("TestSelectForUpdateOf", SubTestSelectForUpdateOf(s))
 	})
 	s.NewTearDownTest(t)
 	s.NewTearDownSuite(t)
@@ -3409,7 +3410,7 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 		// tidb_last_txn_info is still valid after checking query info.
 		rows = tk.MustQuery("select json_extract(@@tidb_last_txn_info, '$.start_ts'), json_extract(@@tidb_last_txn_info, '$.commit_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
-		require.Less(t,  rows[0][0].(string), rows[0][1].(string))
+		require.Less(t, rows[0][0].(string), rows[0][1].(string))
 
 		tk.MustExec("begin pessimistic")
 		tk.MustExec("select * from test_tidb_last_query_info")
@@ -3429,7 +3430,7 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 		tk.MustExec("update test_tidb_last_query_info set v = 12 where a = 1")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
-		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]),)
+		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]))
 
 		tk.MustExec("commit")
 
@@ -3438,7 +3439,7 @@ func SubTestTiDBLastQueryInfo(s *testSuite) func(t *testing.T) {
 		tk.MustExec("select * from test_tidb_last_query_info")
 		rows = tk.MustQuery("select json_extract(@@tidb_last_query_info, '$.start_ts'), json_extract(@@tidb_last_query_info, '$.for_update_ts')").Rows()
 		require.Greater(t, toUint64(rows[0][0]), uint64(0))
-		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]),)
+		require.Less(t, toUint64(rows[0][0]), toUint64(rows[0][1]))
 
 		tk.MustExec("rollback")
 	}
@@ -3521,35 +3522,38 @@ func SubTestSelectForUpdate(s *testSuite) func(t *testing.T) {
 	}
 }
 
-func (s *testSuite) TestSelectForUpdateOf(c *C) {
-	tk := testkit.NewTestKit(c, s.store)
-	tk.MustExec("use test")
-	tk1 := testkit.NewTestKit(c, s.store)
-	tk1.MustExec("use test")
+func SubTestSelectForUpdateOf(s *testSuite) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Parallel()
+		tk := newtestkit.NewTestKit(t, s.store)
+		tk.MustExec("use test")
+		tk1 := newtestkit.NewTestKit(t, s.store)
+		tk1.MustExec("use test")
 
-	tk.MustExec("drop table if exists t, t1")
-	tk.MustExec("create table t (i int)")
-	tk.MustExec("create table t1 (i int)")
-	tk.MustExec("insert t values (1)")
-	tk.MustExec("insert t1 values (1)")
+		tk.MustExec("drop table if exists t, t1")
+		tk.MustExec("create table t (i int)")
+		tk.MustExec("create table t1 (i int)")
+		tk.MustExec("insert t values (1)")
+		tk.MustExec("insert t1 values (1)")
 
-	tk.MustExec("begin pessimistic")
-	tk.MustQuery("select * from t, t1 where t.i = t1.i for update of t").Check(newtestkit.Rows("1 1"))
+		tk.MustExec("begin pessimistic")
+		tk.MustQuery("select * from t, t1 where t.i = t1.i for update of t").Check(newtestkit.Rows("1 1"))
 
-	tk1.MustExec("begin pessimistic")
+		tk1.MustExec("begin pessimistic")
 
-	// no lock for t
-	tk1.MustQuery("select * from t1 for update").Check(newtestkit.Rows("1"))
+		// no lock for t
+		tk1.MustQuery("select * from t1 for update").Check(newtestkit.Rows("1"))
 
-	// meet lock for t1
-	err := tk1.ExecToErr("select * from t for update nowait")
-	c.Assert(terror.ErrorEqual(err, error2.ErrLockAcquireFailAndNoWaitSet), IsTrue, Commentf("error: ", err))
+		// meet lock for t1
+		err := tk1.ExecToErr("select * from t for update nowait")
+		require.True(t, terror.ErrorEqual(err, error2.ErrLockAcquireFailAndNoWaitSet), "error: ", err)
 
-	// t1 rolled back, tk1 acquire the lock
-	tk.MustExec("rollback")
-	tk1.MustQuery("select * from t for update nowait").Check(newtestkit.Rows("1"))
+		// t1 rolled back, tk1 acquire the lock
+		tk.MustExec("rollback")
+		tk1.MustQuery("select * from t for update nowait").Check(newtestkit.Rows("1"))
 
-	tk1.MustExec("rollback")
+		tk1.MustExec("rollback")
+	}
 }
 
 func (s *testSuite) TestEmptyEnum(c *C) {
